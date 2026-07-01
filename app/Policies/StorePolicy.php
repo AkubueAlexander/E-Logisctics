@@ -19,7 +19,7 @@ class StorePolicy
     /**
      * Determine whether the user can view the model.
      */
-    public function view(User $user, Store $restaurant): bool
+    public function view(User $user, Store $store): bool
     {
         return false;
     }
@@ -47,7 +47,7 @@ class StorePolicy
     /**
      * Determine whether the user can delete the model.
      */
-    public function delete(User $user, Store $restaurant): bool
+    public function delete(User $user, Store $store): bool
     {
         return false;
     }
@@ -55,7 +55,7 @@ class StorePolicy
     /**
      * Determine whether the user can restore the model.
      */
-    public function restore(User $user, Store $restaurant): bool
+    public function restore(User $user, Store $store): bool
     {
         return false;
     }
@@ -63,7 +63,7 @@ class StorePolicy
     /**
      * Determine whether the user can permanently delete the model.
      */
-    public function forceDelete(User $user, Store $restaurant): bool
+    public function forceDelete(User $user, Store $store): bool
     {
         return false;
     }

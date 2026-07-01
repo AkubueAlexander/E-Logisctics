@@ -32,20 +32,21 @@ class PlaceMultiVendorOrder
             throw new RuntimeException('Cannot checkout an empty cart structure.');
         }
 
-        $deliveryFeeFeeMinorUnit = 75000;
+        $deliveryFeeMinorUnit = 75000;
         $serviceFeeMinorUnit = 15000;
         $basketSubtotalMinorUnit = $cartSummary['grand_total_minor_unit'];
-        $grandTotalMinorUnit = $basketSubtotalMinorUnit + $deliveryFeeFeeMinorUnit + $serviceFeeMinorUnit;
+        $grandTotalMinorUnit = $basketSubtotalMinorUnit + $deliveryFeeMinorUnit + $serviceFeeMinorUnit;
 
         return DB::transaction(function () use (
             $customer,
             $deliveryDetails,
             $cartSummary,
-            $deliveryFeeFeeMinorUnit,
+            $deliveryFeeMinorUnit,
             $serviceFeeMinorUnit,
             $grandTotalMinorUnit,
             $basketSubtotalMinorUnit
         ) {
+
 
             $txRef = 'GLV-' . strtoupper(Str::random(12));
             // Step A: Store the Parent Order orchestration payload
@@ -60,7 +61,7 @@ class PlaceMultiVendorOrder
                 'status'                    => 'pending_acceptance',
                 'payment_status'            => 'unpaid',
                 'subtotal_minor_unit'       => $basketSubtotalMinorUnit,
-                'delivery_fee_minor_unit'   => $deliveryFeeFeeMinorUnit,
+                'delivery_fee_minor_unit'   => $deliveryFeeMinorUnit,
                 'service_fee_minor_unit'    => $serviceFeeMinorUnit,
                 'total_minor_unit'          => $grandTotalMinorUnit,
                 'currency_code'             => 'NGN',

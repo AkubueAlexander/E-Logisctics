@@ -2,48 +2,93 @@
 
 namespace App\Actions\Driver;
 
-use App\Models\Order;
-use App\Models\User;
+use App\Models\SubOrder;
 use App\Models\Ledger;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
-use RuntimeException;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 class CompleteDelivery
 {
-    /**
-     * Finalize the route execution path and distribute locked escrow financial records.
-     */
-    public function execute(Order $order, User $driver): Order
+    protected const DELIVERY_GEOFENCE_RADIUS_METERS = 300.0;
+
+    public function execute(User $driver, SubOrder $subOrder, float $lat, float $lng, ?string $pin = null): SubOrder
     {
-        // Guard Clause: Multi-tenant scope defense mapping
-        if ($order->driver_id !== $driver->id) {
-            throw new RuntimeException('Unauthorized: You are not the assigned courier for this delivery route.');
-        }
+        return DB::transaction(function () use ($driver, $subOrder, $lat, $lng, $pin) {
 
-        if ($order->status !== 'in_transit') {
-            throw new RuntimeException('Orders can only be marked as completed if they are actively in transit.');
-        }
+            $order = $subOrder->order;
 
-        return DB::transaction(function () use ($order, $driver) {
-            // 1. Set terminal delivery completion statuses
-            $order->update(['status' => 'delivered']);
-            $order->subOrders()->update(['status' => 'delivered']);
+            // Guard 1: Ownership
+            if ($order->driver_id !== $driver->id) {
+                throw new AccessDeniedHttpException('Unauthorized: You are not assigned to this mission.');
+            }
 
-            // 2. Open up the driver's telemetry state to accept new pings
-            $driver->driverProfile->update([
-                'availability_status' => 'available'
-            ]);
+            // Guard 2: State Enforcement
+            if ($subOrder->status !== 'in_transit') {
+                throw new UnprocessableEntityHttpException(
+                    "Cannot mark as delivered. Current status is '{$subOrder->status}', expected 'in_transit'."
+                );
+            }
 
-            // 3. Release financial records from Escrow
-            // This flushes delivery fees to driver, and subtotal payouts directly to store metrics
-            Ledger::where('order_id', $order->id)
+            // Guard 3: Geofence Verification
+            if (!$order->snapshot_delivery_latitude || !$order->snapshot_delivery_longitude) {
+                throw new UnprocessableEntityHttpException('Customer delivery coordinates are missing.');
+            }
+
+            $distanceMeters = (float) DB::scalar(
+                "SELECT ST_DistanceSphere(ST_GeomFromText(?), ST_GeomFromText(?))",
+                [
+                    "POINT({$lng} {$lat})",
+                    "POINT({$order->snapshot_delivery_longitude} {$order->snapshot_delivery_latitude})"
+                ]
+            );
+
+            if ($distanceMeters > self::DELIVERY_GEOFENCE_RADIUS_METERS) {
+                throw new UnprocessableEntityHttpException(
+                    "You are too far from the delivery address. Current distance: " . round($distanceMeters) . "m."
+                );
+            }
+
+            // 1. Advance SubOrder Status
+            $subOrder->update(['status' => 'delivered']);
+
+            // 2. Financial Settlement: Release Vendor & Platform Escrow lines
+            Ledger::where('sub_order_id', $subOrder->id)
                 ->where('status', 'pending')
                 ->update([
-                    'status'     => 'cleared',
-                    'settled_at' => now()
+                    'status' => 'completed',
+                    'updated_at' => now()
                 ]);
 
-            return $order;
+            // 3. Synchronize Parent Order
+            $allDelivered = $order->subOrders()->where('status', '!=', 'delivered')->doesntExist();
+
+            if ($allDelivered && $order->status !== 'completed') {
+
+                $order->update(['status' => 'completed']);
+
+                // BOOK DRIVER EARNINGS: Write the completed payout line to the ledger
+                Ledger::create([
+                    'order_id'          => $order->id,
+                    'sub_order_id'      => null,
+                    'transaction_type'  => 'driver_payout',
+                    'store_id'          => null,
+                    'user_id'           => $driver->id, // Assigned to the driver's account
+                    'amount_minor_unit' => $order->delivery_fee_minor_unit, // Earns the exact delivery fee
+                    'currency_code'     => 'NGN',
+                    'status'            => 'completed', // Settled immediately because the delivery is done
+                ]);
+
+                // Free up driver availability
+                $driver->driverProfile()->update(['availability_status' => 'available']);
+
+                if ($order->deliveryMission) {
+                    $order->deliveryMission()->update(['status' => 'completed']);
+                }
+            }
+
+            return $subOrder;
         });
     }
 }

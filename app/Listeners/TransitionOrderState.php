@@ -21,7 +21,7 @@ class TransitionOrderState implements ShouldQueue
                 'metadata'     => [
                     'gateway'      => 'flutterwave',
                     'attempt_id'   => $order->transaction_reference,
-                    'ip_address'   => request()->ip() // Contextual info that doesn't need a column
+                    'ip_address'   => request()->ip()
                 ]
             ]);
 

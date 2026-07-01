@@ -9,7 +9,7 @@ use App\Models\Ledger;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
-class FileSubOrderDispute
+class `FileSubOrderDispute
 {
     /**
      * Flag a vendor sub-basket as disputed and safely freeze the corresponding wallet payout.

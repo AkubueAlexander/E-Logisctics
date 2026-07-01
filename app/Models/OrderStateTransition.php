@@ -7,8 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class OrderStateTransition extends Model
 {
-    // Define the table name if it does not follow standard naming conventions
-    protected $table = 'order_state_transitions';
+
 
     // Disable timestamps as per your requirement
     public $timestamps = false;
@@ -19,7 +18,7 @@ class OrderStateTransition extends Model
         'from_status',
         'to_status',
         'metadata',
-        'triggered_by'
+        'triggered_by_user_id'
     ];
 
     // Cast metadata to array so it handles JSON automatically

@@ -4,7 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property mixed $modifierGroups
+ */
 class Product extends Model
 {
     protected $fillable = [
@@ -42,5 +46,10 @@ class Product extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
+    }
+
+    public function modifierGroups() : HasMany
+    {
+        return $this->hasMany(ModifierGroup::class);
     }
 }

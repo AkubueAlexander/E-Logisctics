@@ -10,6 +10,7 @@ class StoreMenuCategoryRequest extends FormRequest
     {
         // 1. Resolve store context for the rule
         $store = $this->user()->stores()->wherePivot('role', 'manager')->firstOrFail();
+        $store = $this->route('store');
 
         return [
             'name'       => ['required', 'string', 'max:255'],

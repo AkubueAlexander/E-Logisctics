@@ -29,7 +29,9 @@ return [
     ],
 
     'flutterwave' => [
-        'secret_key' => env('FLW_SECRET_KEY'),
+        'secret_key'   => env('FLW_SECRET_KEY'),
+        'base_url'     => env('FLW_BASE_URL', 'https://api.flutterwave.com/v3'),
+        'webhook_hash' => env('FLW_WEBHOOK_SECRET_HASH'), // Set this up securely
     ],
 
     'slack' => [

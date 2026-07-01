@@ -33,6 +33,16 @@ class FlutterwaveVerifyPaymentController extends Controller
 
         $order = Order::where('transaction_reference', $txRef)->firstOrFail();
 
+        $apiAmount = $response->json('data.amount');
+        $apiCurrency = $response->json('data.currency');
+
+        $paidAmountMinor = intval($apiAmount * 100);
+
+        if ($paidAmountMinor < $order->total_minor_unit || $apiCurrency !== 'NGN') {
+            Log::error('Order payment mismatch flagged via Redirect.', ['order_id' => $order->id]);
+            return response()->json(['status' => 'failed', 'message' => 'Amount mismatch.'], 400);
+        }
+
         // Prevent double-processing
         if ($order->payment_status === 'paid') {
             return response()->json(['message' => 'Payment already processed.'], 200);
@@ -43,6 +53,7 @@ class FlutterwaveVerifyPaymentController extends Controller
 
         // 2. Broadcast to the rest of the application
         OrderPaymentSuccessful::dispatch($order);
+
 
         return response()->json([
             'status' => 'success',

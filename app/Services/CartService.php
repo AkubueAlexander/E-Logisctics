@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Product;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class CartService
 {
@@ -19,22 +20,28 @@ class CartService
     }
 
     /**
-     * Add or update an item in the cart.
+     * Add or update an item in the cart using its absolute state.
      */
     public function addItem(int $userId, int $productId, int $quantity, array $customizations = []): array
     {
         $cart = $this->getCart($userId);
 
+        if (!empty($customizations)) {
+            sort($customizations); // Forces predictable sequential order
+        }
+
+        // 1. Generate the unique key first to safely handle removals or overwrites
+        $itemKey = $productId . '_' . md5(json_encode($customizations));
+
+        // 2. If the frontend sends 0 or less, it means the item was subtracted down to 0
+        if ($quantity <= 0) {
+            return $this->removeItem($userId, $itemKey);
+        }
+
         // Fetch product to guarantee existence and capture store context
         $product = Product::findOrFail($productId);
 
-        if ($quantity <= 0) {
-            return $this->removeItem($userId, $productId);
-        }
-
-        // Unique key combining product and customizations to track distinct line variations
-        $itemKey = $productId . '_' . md5(json_encode($customizations));
-
+        // 3. Absolute Overwrite: Trust the debounced state sent by the frontend
         $cart[$itemKey] = [
             'product_id' => $product->id,
             'store_id' => $product->store_id,
@@ -43,6 +50,56 @@ class CartService
         ];
 
         Cache::put($this->prefix . $userId, $cart, $this->ttl);
+
+        return $this->getSummary($userId);
+    }
+
+    /**
+     * Overwrites the cached cart entirely with an array compiled from local storage.
+     */
+    public function sync(int $userId, array $items): array
+    {
+        if (empty($items)) {
+            $this->clear($userId);
+            return $this->getSummary($userId);
+        }
+
+        $syncedCart = [];
+
+        // Eagerly pull all products to validate items sent from frontend bulk sync
+        $productIds = collect($items)->pluck('product_id')->unique()->toArray();
+        $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
+
+        foreach ($items as $item) {
+            $productId = $item['product_id'] ?? null;
+            $quantity = $item['quantity'] ?? 0;
+            $customizations = $item['customizations'] ?? [];
+
+            // Skip invalid states or items dropping to zero
+            if (!$productId || $quantity <= 0) {
+                continue;
+            }
+
+            $product = $products->get($productId);
+            if (!$product) {
+                continue;
+            }
+
+            if (!empty($customizations)) {
+                sort($customizations); // Forces predictable sequential order
+            }
+
+            $itemKey = $productId . '_' . md5(json_encode($customizations));
+
+            $syncedCart[$itemKey] = [
+                'product_id' => $product->id,
+                'store_id' => $product->store_id,
+                'quantity' => $quantity,
+                'customizations' => $customizations,
+            ];
+        }
+
+        Cache::put($this->prefix . $userId, $syncedCart, $this->ttl);
 
         return $this->getSummary($userId);
     }
@@ -80,21 +137,68 @@ class CartService
             return ['stores' => [], 'grand_total_minor_unit' => 0];
         }
 
-        // Eager-load products to eliminate N+1 queries during loop processing
+        // 1. Eager-load products to eliminate N+1 queries during loop processing
         $productIds = collect($cart)->pluck('product_id')->unique()->toArray();
         $products = Product::whereIn('id', $productIds)->with('store')->get()->keyBy('id');
+
+        // 2. Gather all unique customization option IDs across the entire cart
+        $allOptionIds = [];
+        foreach ($cart as $item) {
+            if (!empty($item['customizations']) && is_array($item['customizations'])) {
+                foreach ($item['customizations'] as $optionId) {
+                    if (is_numeric($optionId)) {
+                        $allOptionIds[] = $optionId;
+                    }
+                }
+            }
+        }
+        $allOptionIds = array_unique($allOptionIds);
+
+        // 3. Perform a single batch query to look up option details and verify prices securely
+        $modifierOptions = [];
+        if (!empty($allOptionIds)) {
+            $modifierOptions = DB::table('modifier_options')
+                ->whereIn('id', $allOptionIds)
+                ->where('is_available', true)
+                ->get()
+                ->keyBy('id');
+        }
 
         $groupedSummary = [];
         $grandTotal = 0;
 
+        // 4. Compile the summary
         foreach ($cart as $itemKey => $item) {
             $product = $products->get($item['product_id']);
             if (!$product || !$product->is_available) {
                 continue; // Automatically filter out items removed from catalog or disabled
             }
 
+            // Calculate customization prices for this specific item line
+            $optionsTotalPerUnit = 0;
+            $compiledCustomizations = [];
+
+            if (!empty($item['customizations']) && is_array($item['customizations'])) {
+                foreach ($item['customizations'] as $optionId) {
+                    $option = $modifierOptions->get($optionId);
+                    if ($option) {
+                        $optionsTotalPerUnit += $option->price_minor_unit;
+
+                        // Attach clean metadata to the output object for your frontend checkout UI
+                        $compiledCustomizations[] = [
+                            'id' => $option->id,
+                            'name' => $option->name,
+                            'price_minor_unit' => $option->price_minor_unit,
+                        ];
+                    }
+                }
+            }
+
             $storeId = $product->store_id;
-            $itemTotal = $product->price_minor_unit * $item['quantity'];
+
+            // Final math logic: (Base Product Price + Option Addons) * Quantity
+            $unitPriceWithModifiers = $product->price_minor_unit + $optionsTotalPerUnit;
+            $itemTotal = $unitPriceWithModifiers * $item['quantity'];
             $grandTotal += $itemTotal;
 
             // Initialize store bucket if not exists
@@ -113,9 +217,9 @@ class CartService
                 'product_id' => $product->id,
                 'name' => $product->name,
                 'quantity' => $item['quantity'],
-                'unit_price_minor_unit' => $product->price_minor_unit,
+                'unit_price_minor_unit' => $unitPriceWithModifiers,
                 'total_price_minor_unit' => $itemTotal,
-                'customizations' => $item['customizations'],
+                'customizations' => $compiledCustomizations, // Now returns full objects to the frontend
             ];
         }
 

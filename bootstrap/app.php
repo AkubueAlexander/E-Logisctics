@@ -16,6 +16,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role' => \App\Http\Middleware\CheckSystemRole::class,
         ]);
+        $middleware->preventRequestForgery(except: [
+            'api/payments/flutterwave/webhook', // Inbound customer payments
+            'api/webhooks/flutterwave/*',       // Outbound driver/store transfer payouts
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

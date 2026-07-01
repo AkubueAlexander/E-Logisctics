@@ -30,6 +30,7 @@ class SaveStoreProfile
                 'latitude' => $data['latitude'],
                 'longitude' => $data['longitude'],
                 'operating_hours' => $data['operating_hours'] ?? $store->operating_hours,
+                'logo_url' => $data['logo_url'] ?? $store->logo_url
             ]);
 
             $store->save();

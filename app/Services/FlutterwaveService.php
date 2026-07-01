@@ -28,7 +28,7 @@ class FlutterwaveService
                     'name'  => $user->name,
                 ],
                 'customizations' => [
-                    'title'       => 'Glovo Replica Checkout',
+                    'title'       => 'Q-Commerce Logistics Replica Checkout',
                     'description' => "Payment for Order #{$order->id}",
                 ]
             ]);

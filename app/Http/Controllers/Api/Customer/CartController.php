@@ -27,7 +27,7 @@ class CartController extends Controller
     }
 
     /**
-     * Add or update an item inside the customer cart.
+     * Add or update an item inside the customer cart (Absolute Quantity).
      */
     public function store(UpdateCartRequest $request): JsonResponse
     {
@@ -40,6 +40,30 @@ class CartController extends Controller
 
         return response()->json([
             'message' => 'Cart updated successfully.',
+            'data' => $summary
+        ], 200);
+    }
+
+    /**
+     * Bulk sync the entire frontend local storage cart with the Redis cache.
+     * Expects an array of items: [['product_id' => x, 'quantity' => y, 'customizations' => []], ...]
+     */
+    public function sync(Request $request): JsonResponse
+    {
+        $request->validate([
+            'items' => 'present|array',
+            'items.*.product_id' => 'required|integer',
+            'items.*.quantity' => 'required|integer|min:0',
+            'items.*.customizations' => 'nullable|array',
+        ]);
+
+        $summary = $this->cartService->sync(
+            $request->user()->id,
+            $request->input('items', [])
+        );
+
+        return response()->json([
+            'message' => 'Cart synchronized successfully.',
             'data' => $summary
         ], 200);
     }

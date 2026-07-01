@@ -9,7 +9,7 @@ class ToggleStoreStatusRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true; // Enforced via Controller Gates
+        return true;
     }
 
     public function rules(): array
