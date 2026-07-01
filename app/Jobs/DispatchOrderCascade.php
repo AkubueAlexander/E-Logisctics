@@ -10,34 +10,39 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support3\Facades\DB;
+use Illuminate\Support\Facades\DB; // Fixed typo here
 
 class DispatchOrderCascade implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 1; // Handled programmatically via timeouts
+    public int $tries = 1; 
 
     public function __construct(protected Order $order) {}
 
     public function handle(FindNearbyDriversForOrder $finder): void
     {
-        // Guard Clause: If the order was already claimed or cancelled, terminate cascade execution
+        // 1. Guard Clause: Refresh and check status
         if ($this->order->fresh()->status !== 'ready_for_pickup') {
             return;
         }
 
-        // 1. Pull current candidate pool within 5km radius
+        // Fetch the delivery mission wrapper for relation tracking
+        $mission = $this->order->deliveryMission;
+        if (!$mission) {
+            return; 
+        }
+
+        // 2. Pull current candidate pool within 5km radius
         $nearbyDrivers = $finder->execute($this->order, 5.0);
 
         if ($nearbyDrivers->isEmpty()) {
-            // No drivers found? Re-queue job to look again in 30 seconds (backoff loop)
             self::dispatch($this->order)->delay(now()->addSeconds(30));
             return;
         }
 
-        // 2. Identify a target candidate who hasn't already explicitly rejected this mission ping
-        $alreadyTargetedDriverIds = MissionPing::where('order_id', $this->order->id)
+        // 3. Schema Fix: Query targeted drivers using delivery_mission_id, not order_id
+        $alreadyTargetedDriverIds = MissionPing::where('delivery_mission_id', $mission->id)
             ->pluck('driver_id')
             ->toArray();
 
@@ -46,25 +51,23 @@ class DispatchOrderCascade implements ShouldQueue
         });
 
         if (!$nextDriverProfile) {
-            // We've exhausted all current options within 5km. Reset or wait for new check-ins.
             self::dispatch($this->order)->delay(now()->addSeconds(60));
             return;
         }
 
-        // 3. Dispatch the high-impact tracking ping record
-        DB::transaction(function () use ($nextDriverProfile) {
-            $ping = MissionPing::create([
-                'order_id' => $this->order->id,
-                'driver_id' => $nextDriverProfile->user_id,
-                'status' => 'pending',
-                'expires_at' => now()->addSeconds(45), // 45-second window to accept/reject
+        // 4. Scope & Status Fix: Return the ping from the transaction and use 'sent'
+        $ping = DB::transaction(function () use ($mission, $nextDriverProfile) {
+            return MissionPing::create([
+                'delivery_mission_id' => $mission->id, // Schema fix
+                'driver_id'           => $nextDriverProfile->user_id,
+                'status'              => 'sent', // Alignment fix: CheckPingTimeoutJob looks for 'sent'
+                'expires_at'          => now()->addSeconds(45),
             ]);
-
-            // TODO: Broadcast this ping model over Reverb channels straight to the driver's phone app
-            // broadcast(new NewMissionOfferDispatched($ping));
         });
 
-        // 4. Queue up a check job to expire this offer if they ignore it
-        CheckPingTimeout::dispatch($this->order)->delay(now()->addSeconds(46));
+        // TODO: broadcast(new NewMissionOfferDispatched($ping));
+
+        // 5. Recommended Job Integration: Safely pass the $ping instance
+        CheckPingTimeoutJob::dispatch($ping)->delay(now()->addSeconds(46));
     }
 }

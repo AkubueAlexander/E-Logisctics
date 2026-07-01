@@ -58,7 +58,7 @@ class PlaceMultiVendorOrder
                 'snapshot_delivery_address' => $deliveryDetails['delivery_address'],
                 'snapshot_delivery_latitude'=> $deliveryDetails['latitude'],
                 'snapshot_delivery_longitude'=> $deliveryDetails['longitude'],
-                'status'                    => 'pending_acceptance',
+                'status'                    => 'pending_payment',
                 'payment_status'            => 'unpaid',
                 'subtotal_minor_unit'       => $basketSubtotalMinorUnit,
                 'delivery_fee_minor_unit'   => $deliveryFeeMinorUnit,
@@ -88,7 +88,7 @@ class PlaceMultiVendorOrder
                 $subOrder = SubOrder::create([
                     'order_id' => $order->id,
                     'store_id' => $storeBucket['store_id'],
-                    'status' => 'pending_acceptance',
+                    'status' => 'pending_payment',
                     'subtotal_minor_unit' => $storeBucket['store_subtotal_minor_unit'],
                     'platform_commission_minor_unit' => $commissionMinorUnit,
                     'estimated_prep_time_minutes' => null,

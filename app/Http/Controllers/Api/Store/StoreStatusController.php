@@ -19,7 +19,7 @@ class StoreStatusController extends Controller
         // Protect the endpoint: Ensure only authorized staff/owners can pull the plug
         Gate::authorize('update', $store);
 
-        $updatedStore = $action->execute($store, $request->input('is_active'));
+        $updatedStore = $action->execute($store, $request->boolean('is_active'));
 
         return response()->json([
             'message' => "Store operational status changed to open",
