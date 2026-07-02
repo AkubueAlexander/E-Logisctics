@@ -25,7 +25,7 @@ class StoreOrderManagementService
             $subOrder->update(['status' => 'accepted']);
 
             // 2. Sync Parent Order state (Let it handle parent logging when all stores respond)
-            $this->syncParentOrderStatus($subOrder->order_id, $userId);
+            $this->syncParentOrderStatus($subOrder->order_id, $userId, $subOrder);
 
             // 3. Notify Customer UI about this specific merchant's confirmation
             event(new TimelineEventTriggered($subOrder->order_id, [
@@ -51,11 +51,10 @@ class StoreOrderManagementService
             // 1. Update Sub-Order Status strictly at the merchant item level
             $subOrder->update(['status' => 'cancelled']);
 
-            // 2. Process Ledger / Partial Refund Logic for this sub-order's share of the pool
-            // DB::table('ledgers')->where('sub_order_id', $subOrder->id)...
+          
 
             // 3. Sync Parent Order state (Evaluates total fallout or progression)
-            $this->syncParentOrderStatus($subOrder->order_id, $userId);
+            $this->syncParentOrderStatus($subOrder->order_id, $userId, $subOrder);
 
             // 4. Notify Customer UI about this specific sub-order failure
             event(new TimelineEventTriggered($subOrder->order_id, [
@@ -71,12 +70,12 @@ class StoreOrderManagementService
     /**
      * Evaluates all sub-orders to transition and record parent order audit trails accurately.
      */
-    private function syncParentOrderStatus(int $orderId, int $userId): void
+    private function syncParentOrderStatus(int $orderId, int $userId, SubOrder $subOrder): void
     {
         // Pessimistic lock ensures concurrent store evaluations don't overwrite each other
         $order = Order::with('subOrders')->lockForUpdate()->findOrFail($orderId);
         $oldParentStatus = $order->status;
-        
+
         $statuses = $order->subOrders->pluck('status');
 
         // Guard Clause: If any store is still deciding, parent order stays in 'pending_acceptance'
@@ -89,7 +88,7 @@ class StoreOrderManagementService
         // ------------------------------------------------------------------------
         $allCancelled = $statuses->every(fn($status) => $status === 'cancelled');
         if ($allCancelled) {
-            $this->executeFullOrderCancellation($order, $userId, $oldParentStatus);
+            $this->executeFullOrderCancellation($order, $userId, $oldParentStatus, $subOrder);
             return;
         }
 
@@ -116,7 +115,7 @@ class StoreOrderManagementService
     /**
      * Executes fully locked parent system cancellation adjustments.
      */
-    private function executeFullOrderCancellation(Order $order, int $userId, string $oldParentStatus): void
+    private function executeFullOrderCancellation(Order $order, int $userId, string $oldParentStatus, SubOrder $subOrder): void
     {
         $order->update(['status' => 'cancelled']);
 
@@ -130,12 +129,15 @@ class StoreOrderManagementService
         ]);
 
         // Void escrow line items directly matching your background worker pattern
-        DB::table('ledgers')
-            ->where('order_id', $order->id)
-            ->where('status', 'pending')
-            ->update([
-                'status'     => 'voided',
-                'updated_at' => now()
+        DB::table('ledgers')->insert([
+            'order_id'       => $subOrder->order_id,
+            'sub_order_id'   => $subOrder->id,
+            'user_id'        => $userId,
+            'amount'         => -$subOrder->amount, // Grabs the sub-order's specific amount and negates it
+            'currency_code'  => $subOrder->currency_code ?? 'NGN', // Falls back to NGN if not on model
+            'status'         => 'completed',
+            'created_at'     => now(),
+            'updated_at'     => now()
         ]);
 
         event(new TimelineEventTriggered($order->id, [
