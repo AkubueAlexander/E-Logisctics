@@ -19,3 +19,7 @@ Broadcast::channel('App.Models.Order.{orderId}.Tracking', function (User $user, 
 
     return (int) $user->id === (int) $order->customer_id || (int) $user->id === (int) $order->driver_id;
 });
+
+Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
+    return (int) $user->id === (int) $id;
+});
