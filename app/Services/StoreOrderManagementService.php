@@ -136,7 +136,7 @@ class StoreOrderManagementService
             ->update([
                 'status'     => 'voided',
                 'updated_at' => now()
-            ]);
+        ]);
 
         event(new TimelineEventTriggered($order->id, [
             'status' => 'cancelled',

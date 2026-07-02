@@ -4,6 +4,7 @@ namespace App\Events\Tracking;
 
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -19,7 +20,7 @@ class TimelineEventTriggered implements ShouldBroadcast
 
     public function broadcastOn(): Channel
     {
-        return new Channel("orders.{$this->orderId}.tracker");
+        return new PrivateChannel("orders.{$this->orderId}.tracker");
     }
 
     public function broadcastAs(): string

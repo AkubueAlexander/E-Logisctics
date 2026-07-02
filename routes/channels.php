@@ -10,7 +10,7 @@ Broadcast::channel('drivers.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
 
-Broadcast::channel('App.Models.Order.{orderId}.Tracking', function (User $user, int $orderId) {
+Broadcast::channel('orders.{orderId}.tracker', function (User $user, int $orderId) {
     $order = Order::find($orderId);
 
     if (!$order) {
