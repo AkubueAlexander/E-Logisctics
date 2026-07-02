@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Events\OrderAutoCancelledBySystem;
+use App\Events\Tracking\TimelineEventTriggered;
 use App\Models\Order;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -61,6 +62,12 @@ class CancelUnassignedOrder implements ShouldQueue
                     'status'     => 'voided',
                     'updated_at' => now()
                 ]);
+
+            // 5. Broadcast to Unified Frontend Timeline Tracker
+            event(new TimelineEventTriggered($order->id, [
+                'status'  => 'cancelled',
+                'message' => 'We could not find a nearby courier to fulfill your delivery. Your order has been cancelled and refunded.'
+            ]));
 
             // 4. Push Live UI Notifications
              broadcast(new OrderAutoCancelledBySystem($order));

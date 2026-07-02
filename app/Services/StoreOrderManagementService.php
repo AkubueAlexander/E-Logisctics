@@ -12,7 +12,7 @@ use Exception;
 class StoreOrderManagementService
 {
     /**
-     * Accepts a sub-order and synchronizes the parent order state.
+     * Accepts a sub-order at the merchant item level.
      */
     public function acceptSubOrder(SubOrder $subOrder, int $userId): SubOrder
     {
@@ -21,27 +21,16 @@ class StoreOrderManagementService
         }
 
         return DB::transaction(function () use ($subOrder, $userId) {
-            $oldStatus = $subOrder->status;
-            
-            // 1. Update Sub-Order Status
+            // 1. Update Sub-Order Status strictly at the merchant item level
             $subOrder->update(['status' => 'accepted']);
 
-            // 2. Log Transition
-            OrderStateTransition::create([
-                'order_id' => $subOrder->order_id,
-                'from_status' => $oldStatus,
-                'to_status' => 'accepted',
-                'triggered_by_user_id' => $userId,
-                'metadata' => json_encode(['sub_order_id' => $subOrder->id])
-            ]);
+            // 2. Sync Parent Order state (Let it handle parent logging when all stores respond)
+            $this->syncParentOrderStatus($subOrder->order_id, $userId);
 
-            // 3. Sync Parent Order
-            $this->syncParentOrderStatus($subOrder->order_id);
-
-            // 4. Notify Customer asynchronously via Queue
+            // 3. Notify Customer UI about this specific merchant's confirmation
             event(new TimelineEventTriggered($subOrder->order_id, [
-                'status' => 'accepted',
-                'message' => 'The store is preparing your order.',
+                'status' => 'sub_order_accepted',
+                'message' => "Your items from {$subOrder->store->name} have been confirmed.",
                 'store_id' => $subOrder->store_id
             ]));
 
@@ -50,7 +39,7 @@ class StoreOrderManagementService
     }
 
     /**
-     * Cancels a sub-order and processes necessary ledger adjustments.
+     * Cancels a single sub-order at the merchant item level.
      */
     public function cancelSubOrder(SubOrder $subOrder, int $userId, string $reason): SubOrder
     {
@@ -59,30 +48,19 @@ class StoreOrderManagementService
         }
 
         return DB::transaction(function () use ($subOrder, $userId, $reason) {
-            $oldStatus = $subOrder->status;
-            
-            // 1. Update Sub-Order Status
+            // 1. Update Sub-Order Status strictly at the merchant item level
             $subOrder->update(['status' => 'cancelled']);
 
-            // 2. Log Transition
-            OrderStateTransition::create([
-                'order_id' => $subOrder->order_id,
-                'from_status' => $oldStatus,
-                'to_status' => 'cancelled',
-                'triggered_by_user_id' => $userId,
-                'metadata' => json_encode(['sub_order_id' => $subOrder->id, 'reason' => $reason])
-            ]);
+            // 2. Process Ledger / Partial Refund Logic for this sub-order's share of the pool
+            // DB::table('ledgers')->where('sub_order_id', $subOrder->id)...
 
-            // 3. Process Ledger / Refund Logic (Placeholder)
-            // Ledger::create(['sub_order_id' => $subOrder->id, 'transaction_type' => 'refund'...]);
+            // 3. Sync Parent Order state (Evaluates total fallout or progression)
+            $this->syncParentOrderStatus($subOrder->order_id, $userId);
 
-            // 4. Sync Parent Order
-            $this->syncParentOrderStatus($subOrder->order_id);
-
-            // 5. Notify Customer
+            // 4. Notify Customer UI about this specific sub-order failure
             event(new TimelineEventTriggered($subOrder->order_id, [
-                'status' => 'cancelled',
-                'message' => "Order cancelled by store: {$reason}",
+                'status' => 'sub_order_cancelled',
+                'message' => "Items from {$subOrder->store->name} are unavailable: {$reason}",
                 'store_id' => $subOrder->store_id
             ]));
 
@@ -91,19 +69,78 @@ class StoreOrderManagementService
     }
 
     /**
-     * Evaluates all sub-orders to determine the correct parent order status.
+     * Evaluates all sub-orders to transition and record parent order audit trails accurately.
      */
-    private function syncParentOrderStatus(int $orderId): void
+    private function syncParentOrderStatus(int $orderId, int $userId): void
     {
+        // Pessimistic lock ensures concurrent store evaluations don't overwrite each other
         $order = Order::with('subOrders')->lockForUpdate()->findOrFail($orderId);
+        $oldParentStatus = $order->status;
         
-        $statuses = $order->subOrders->pluck('status')->unique();
+        $statuses = $order->subOrders->pluck('status');
 
-        if ($statuses->count() === 1 && $statuses->first() === 'accepted') {
-            $order->update(['status' => 'accepted']);
-        } elseif ($statuses->contains('cancelled') && !$statuses->contains('accepted')) {
-            $order->update(['status' => 'cancelled']);
+        // Guard Clause: If any store is still deciding, parent order stays in 'pending_acceptance'
+        if ($statuses->contains('pending_acceptance')) {
+            return;
         }
-        // Additional state machine logic for mixed states (e.g., partial cancellations)
+
+        // ------------------------------------------------------------------------
+        // Scenario A: Total Failure (All stores cancelled their allocations)
+        // ------------------------------------------------------------------------
+        $allCancelled = $statuses->every(fn($status) => $status === 'cancelled');
+        if ($allCancelled) {
+            $this->executeFullOrderCancellation($order, $userId, $oldParentStatus);
+            return;
+        }
+
+        // ------------------------------------------------------------------------
+        // Scenario B: Viable Progression (At least one store accepted, zero pending)
+        // ------------------------------------------------------------------------
+        $order->update(['status' => 'accepted']);
+
+        // LOG REAL TRANSITION: Record the actual step the parent order just took
+        OrderStateTransition::create([
+            'order_id'             => $order->id,
+            'from_status'          => $oldParentStatus,
+            'to_status'            => 'accepted',
+            'triggered_by_user_id' => $userId,
+            'metadata'             => json_encode(['context' => 'All merchants responded. Order proceeds to fulfillment.'])
+        ]);
+
+        event(new TimelineEventTriggered($order->id, [
+            'status' => 'accepted',
+            'message' => 'Your order has been accepted and is being prepared.'
+        ]));
+    }
+
+    /**
+     * Executes fully locked parent system cancellation adjustments.
+     */
+    private function executeFullOrderCancellation(Order $order, int $userId, string $oldParentStatus): void
+    {
+        $order->update(['status' => 'cancelled']);
+
+        // LOG REAL TRANSITION: Only log parent cancellation when the order is completely dead
+        OrderStateTransition::create([
+            'order_id'             => $order->id,
+            'from_status'          => $oldParentStatus,
+            'to_status'            => 'cancelled',
+            'triggered_by_user_id' => $userId,
+            'metadata'             => json_encode(['reason' => 'All sub-orders were cancelled by merchants.'])
+        ]);
+
+        // Void escrow line items directly matching your background worker pattern
+        DB::table('ledgers')
+            ->where('order_id', $order->id)
+            ->where('status', 'pending')
+            ->update([
+                'status'     => 'voided',
+                'updated_at' => now()
+            ]);
+
+        event(new TimelineEventTriggered($order->id, [
+            'status' => 'cancelled',
+            'message' => 'Your order was cancelled because items are completely unavailable.'
+        ]));
     }
 }

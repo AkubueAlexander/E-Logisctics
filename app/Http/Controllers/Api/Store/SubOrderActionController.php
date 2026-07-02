@@ -17,7 +17,7 @@ class SubOrderActionController extends Controller
     public function accept(Request $request, SubOrder $subOrder): JsonResponse
     {
         // Ensure the authenticated user has access to this store's sub-order
-        $this->authorize('update', $subOrder);
+         $this->authorize('update', $subOrder->store);
 
         try {
             $updatedSubOrder = $this->orderService->acceptSubOrder(

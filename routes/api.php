@@ -38,6 +38,7 @@ use App\Http\Controllers\Api\Store\StoreController;
 use App\Http\Controllers\Api\Store\StoreFinanceController;
 use App\Http\Controllers\Api\Store\StoreStaffController;
 use App\Http\Controllers\Api\Store\StoreStatusController;
+use App\Http\Controllers\Api\Store\SubOrderActionController;
 use App\Http\Controllers\Api\TwoFactorController;
 use App\Http\Controllers\Api\VerifyOtpController;
 use App\Http\Controllers\Api\VerifyTwoFactorLoginController;
@@ -135,6 +136,9 @@ Route::prefix('v1')->group(function () {
                 Route::prefix('staff')->group(function () {
                     Route::post('/invite', [StoreStaffController::class, 'invite']);
                 });
+
+                Route::put('/sub-orders/{subOrder}/accept', [SubOrderActionController::class, 'accept']);
+                Route::put('/sub-orders/{subOrder}/cancel', [SubOrderActionController::class, 'cancel']);
             });
 
             Route::prefix('product')->group(function () {

@@ -32,10 +32,14 @@ class ReconcilePartialCancellation implements ShouldQueue
         }
 
         // 1. Credit the customer's internal wallet for the exact amount of the cancelled leg
+        // 1. Credit the customer's internal wallet for the exact amount of the cancelled leg
         $this->ledger->creditWallet(
             userId: $order->user_id,
             amountMinorUnit: $subOrder->total_minor_unit,
-            description: "Refund for item unavailability from Store: " . ($subOrder->store->name ?? 'Merchant')
+            description: "Refund for item unavailability from Store: " . ($subOrder->store->name ?? 'Merchant'),
+            reference: "suborder_refund_idx_{$subOrder->id}",
+            orderId: $order->id,         // Macro Platform Tracking
+            subOrderId: $subOrder->id    // Granular Link Tracking
         );
 
         // 2. Adjust corporate escrow tracking collections to ensure the merchant isn't paid out
