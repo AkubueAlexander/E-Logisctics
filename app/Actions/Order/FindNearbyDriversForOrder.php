@@ -32,7 +32,7 @@ class FindNearbyDriversForOrder
         if ($mission) {
             $query->whereDoesntHave('user.missionPings', function ($pingQuery) use ($mission) {
                 $pingQuery->where('delivery_mission_id', $mission->id)
-                    ->whereIn('status', ['timed_out', 'rejected']);
+                    ->whereIn('status', ['timed_out', 'cancelled', 'rejected']);
             });
         }
 

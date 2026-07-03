@@ -69,7 +69,7 @@ class DispatchOrderCascade implements ShouldQueue
         }
 
         // 5. Atomic transaction to write the offer record
-        $pingDurationSeconds = 30;
+        $pingDurationSeconds = 60;
         $ping = DB::transaction(function () use ($mission, $nextDriverProfile, $pingDurationSeconds) {
             return MissionPing::create([
                 'delivery_mission_id' => $mission->id,

@@ -2,8 +2,8 @@
 
 namespace App\Actions\Driver;
 
+use App\Jobs\DispatchOrderCascade;
 use App\Models\MissionPing;
-use App\Jobs\DispatchOrderToDrivers;
 use Illuminate\Support\Facades\DB;
 
 class RejectOrder
@@ -24,7 +24,7 @@ class RejectOrder
 
                 // 3. If the mission is still actively looking for a rider, cascade instantly
                 if ($mission && $mission->status === 'searching') {
-                    DispatchOrderToDrivers::dispatch($mission->order);
+                    DispatchOrderCascade::dispatch($mission->order);
                 }
             }
         });
