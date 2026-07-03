@@ -20,16 +20,21 @@ class OrderAutoCancelledBySystem implements ShouldBroadcast
     {
         // Broadcast directly to this specific customer's private channel
         return [
-            new PrivateChannel("App.Models.User.{$this->order->user_id}")
+            new PrivateChannel("App.Models.User.{$this->order->user_id}"),
         ];
+    }
+
+    public function broadcastAs(): string
+    {
+        return 'timeline.updated';
     }
 
     public function broadcastWith(): array
     {
         return [
             'order_id' => $this->order->id,
-            'status'   => 'cancelled',
-            'message'  => 'We could not find an available courier near you.'
+            'status' => 'cancelled',
+            'message' => 'We could not find an available courier near you.',
         ];
     }
 }

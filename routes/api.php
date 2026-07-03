@@ -140,6 +140,9 @@ Route::prefix('v1')->group(function () {
 
                 Route::put('/sub-orders/{subOrder}/accept', [SubOrderActionController::class, 'accept']);
                 Route::put('/sub-orders/{subOrder}/cancel', [SubOrderActionController::class, 'cancel']);
+
+                Route::get('/sub-orders', [MerchantOrderController::class, 'index']);
+                Route::get('/sub-orders/{subOrder}', [MerchantOrderController::class, 'show']);
             });
 
             Route::prefix('product')->group(function () {
@@ -152,10 +155,10 @@ Route::prefix('v1')->group(function () {
                 Route::post('{product}/modifiers/sync', [ProductModifierSyncController::class, 'store']);
             });
 
-            Route::prefix('store/{store}')->group(function () {
+            Route::prefix('/{store}')->group(function () {
 
                 // Merchant Order Handling Pipeline
-                Route::get('orders', [MerchantOrderController::class, 'index']);
+                                
                 Route::patch('orders/{subOrder}/status', [MerchantOrderController::class, 'update']);
 
                 Route::patch('toggle-status', StoreStatusController::class);

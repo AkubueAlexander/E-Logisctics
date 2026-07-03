@@ -2,12 +2,14 @@
 
 namespace App\Services;
 
-use App\Models\SubOrder;
+use App\Events\Tracking\TimelineEventTriggered;
+use App\Jobs\DispatchOrderCascade;
+use App\Models\DeliveryMission;
 use App\Models\Order;
 use App\Models\OrderStateTransition;
-use App\Events\Tracking\TimelineEventTriggered;
-use Illuminate\Support\Facades\DB;
+use App\Models\SubOrder;
 use Exception;
+use Illuminate\Support\Facades\DB;
 
 class StoreOrderManagementService
 {
@@ -17,7 +19,7 @@ class StoreOrderManagementService
     public function acceptSubOrder(SubOrder $subOrder, int $userId): SubOrder
     {
         if ($subOrder->status !== 'pending_acceptance') {
-            throw new Exception("Only pending sub-orders can be accepted.");
+            throw new Exception('Only pending sub-orders can be accepted.');
         }
 
         return DB::transaction(function () use ($subOrder, $userId) {
@@ -31,7 +33,7 @@ class StoreOrderManagementService
             event(new TimelineEventTriggered($subOrder->order_id, [
                 'status' => 'sub_order_accepted',
                 'message' => "Your items from {$subOrder->store->name} have been confirmed.",
-                'store_id' => $subOrder->store_id
+                'store_id' => $subOrder->store_id,
             ]));
 
             return $subOrder;
@@ -44,14 +46,26 @@ class StoreOrderManagementService
     public function cancelSubOrder(SubOrder $subOrder, int $userId, string $reason): SubOrder
     {
         if (in_array($subOrder->status, ['in_transit', 'delivered', 'cancelled'])) {
-            throw new Exception("This sub-order cannot be cancelled at this stage.");
+            throw new Exception('This sub-order cannot be cancelled at this stage.');
         }
 
         return DB::transaction(function () use ($subOrder, $userId, $reason) {
             // 1. Update Sub-Order Status strictly at the merchant item level
             $subOrder->update(['status' => 'cancelled']);
 
-          
+            $subOrder->loadMissing('order');
+
+            DB::table('ledgers')->insert([
+                'order_id' => $subOrder->order_id,
+                'sub_order_id' => $subOrder->id,
+                'user_id' => $subOrder->order->customer_id, 
+                'amount_minor_unit' => -$subOrder->subtotal_minor_unit, 
+                'currency_code' => 'NGN',
+                'transaction_type' => 'refund',
+                'status' => 'completed',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
 
             // 3. Sync Parent Order state (Evaluates total fallout or progression)
             $this->syncParentOrderStatus($subOrder->order_id, $userId, $subOrder);
@@ -60,7 +74,7 @@ class StoreOrderManagementService
             event(new TimelineEventTriggered($subOrder->order_id, [
                 'status' => 'sub_order_cancelled',
                 'message' => "Items from {$subOrder->store->name} are unavailable: {$reason}",
-                'store_id' => $subOrder->store_id
+                'store_id' => $subOrder->store_id,
             ]));
 
             return $subOrder;
@@ -86,29 +100,37 @@ class StoreOrderManagementService
         // ------------------------------------------------------------------------
         // Scenario A: Total Failure (All stores cancelled their allocations)
         // ------------------------------------------------------------------------
-        $allCancelled = $statuses->every(fn($status) => $status === 'cancelled');
+        $allCancelled = $statuses->every(fn ($status) => $status === 'cancelled');
         if ($allCancelled) {
             $this->executeFullOrderCancellation($order, $userId, $oldParentStatus, $subOrder);
+
             return;
         }
 
         // ------------------------------------------------------------------------
         // Scenario B: Viable Progression (At least one store accepted, zero pending)
         // ------------------------------------------------------------------------
-        $order->update(['status' => 'accepted']);
+        $order->update(['status' => 'searching_for_driver']);
 
         // LOG REAL TRANSITION: Record the actual step the parent order just took
         OrderStateTransition::create([
-            'order_id'             => $order->id,
-            'from_status'          => $oldParentStatus,
-            'to_status'            => 'accepted',
+            'order_id' => $order->id,
+            'from_status' => $oldParentStatus,
+            'to_status' => 'searching_for_driver',
             'triggered_by_user_id' => $userId,
-            'metadata'             => json_encode(['context' => 'All merchants responded. Order proceeds to fulfillment.'])
+            'metadata' => json_encode(['context' => 'All merchants responded. Order proceeds to fulfillment.']),
         ]);
 
+        DeliveryMission::create([
+            'order_id' => $order->id,
+            'status' => 'pending',
+        ]);
+
+        DispatchOrderCascade::dispatch($order)->afterCommit();
+
         event(new TimelineEventTriggered($order->id, [
-            'status' => 'accepted',
-            'message' => 'Your order has been accepted and is being prepared.'
+            'status' => 'searching_for_driver',
+            'message' => 'Your order has been accepted and is being prepared.',
         ]));
     }
 
@@ -121,28 +143,16 @@ class StoreOrderManagementService
 
         // LOG REAL TRANSITION: Only log parent cancellation when the order is completely dead
         OrderStateTransition::create([
-            'order_id'             => $order->id,
-            'from_status'          => $oldParentStatus,
-            'to_status'            => 'cancelled',
+            'order_id' => $order->id,
+            'from_status' => $oldParentStatus,
+            'to_status' => 'cancelled',
             'triggered_by_user_id' => $userId,
-            'metadata'             => json_encode(['reason' => 'All sub-orders were cancelled by merchants.'])
-        ]);
-
-        // Void escrow line items directly matching your background worker pattern
-        DB::table('ledgers')->insert([
-            'order_id'       => $subOrder->order_id,
-            'sub_order_id'   => $subOrder->id,
-            'user_id'        => $userId,
-            'amount'         => -$subOrder->amount, // Grabs the sub-order's specific amount and negates it
-            'currency_code'  => $subOrder->currency_code ?? 'NGN', // Falls back to NGN if not on model
-            'status'         => 'completed',
-            'created_at'     => now(),
-            'updated_at'     => now()
+            'metadata' => json_encode(['reason' => 'All sub-orders were cancelled by merchants.']),
         ]);
 
         event(new TimelineEventTriggered($order->id, [
             'status' => 'cancelled',
-            'message' => 'Your order was cancelled because items are completely unavailable.'
+            'message' => 'Your order was cancelled because items are completely unavailable.',
         ]));
     }
 }
