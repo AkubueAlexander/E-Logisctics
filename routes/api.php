@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\Admin\AdminGlobalCategoryController;
 use App\Http\Controllers\Api\Customer\CartController;
 use App\Http\Controllers\Api\Customer\CheckoutController;
 use App\Http\Controllers\Api\Customer\CustomerOrderController;
+use App\Http\Controllers\Api\Customer\StoreDiscoveryController;
 use App\Http\Controllers\Api\Driver\ArrivalController;
 use App\Http\Controllers\Api\Driver\DeliveryController;
 use App\Http\Controllers\Api\Driver\DriverController;
@@ -173,10 +174,10 @@ Route::prefix('v1')->group(function () {
         Route::middleware('role:customer')->prefix('customer')->group(function () {
 
             // Spatial search and discovery
-            Route::get('/stores/nearby', [App\Http\Controllers\Api\Customer\StoreDiscoveryController::class, 'index']);
+            Route::get('/stores/nearby', [StoreDiscoveryController::class, 'index']);
 
             // Cached single store storefront menu profile
-            Route::get('/stores/{store}/menu', [App\Http\Controllers\Api\Customer\StoreDiscoveryController::class, 'show']);
+            Route::get('/stores/{store}/menu', [StoreDiscoveryController::class, 'show']);
 
             Route::post('orders/{order_id}/pay', [InitializePaymentController::class, 'initialize']);
 
