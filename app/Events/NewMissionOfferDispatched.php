@@ -4,7 +4,6 @@ namespace App\Events;
 
 use App\Models\Order;
 use App\Models\User;
-use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
@@ -21,7 +20,7 @@ class NewMissionOfferDispatched implements ShouldBroadcastNow
     public function __construct(
         public Order $order,
         public User $driver,
-        public int $timeoutSeconds = 30
+        public int $timeoutSeconds = 60
     ) {}
 
     /**
@@ -39,22 +38,29 @@ class NewMissionOfferDispatched implements ShouldBroadcastNow
      */
     public function broadcastWith(): array
     {
-        $firstStore = $this->order->subOrders->first()?->store;
+        // Map all unique stores attached to the sub-orders matching the stores table schema
+        $pickups = $this->order->subOrders->map(function ($subOrder) {
+            $store = $subOrder->store;
+            return [
+                'sub_order_id' => $subOrder->id,
+                'store_name'   => $store?->name,
+                'latitude'     => $store?->latitude,
+                'longitude'    => $store?->longitude,
+                'address'      => $store?->address,
+            ];
+        })->unique('store_name')->values()->toArray();
 
         return [
-            'order_id' => $this->order->id,
+            'order_id'               => $this->order->id,
             'delivery_fee_formatted' => number_format($this->order->delivery_fee_minor_unit / 100, 2),
-            'currency' => 'NGN',
-            'timeout_seconds' => $this->timeoutSeconds,
-            'pickup' => [
-                'store_name' => $firstStore?->name ?? 'Multi-Vendor Pickup',
-                'latitude' => $firstStore?->latitude,
-                'longitude' => $firstStore?->longitude,
-            ],
+            'currency'               => $this->order->currency_code, // Matches your currency_code column
+            'timeout_seconds'        => $this->timeoutSeconds,
+            'total_stops'            => count($pickups) + 1,
+            'pickups'                => $pickups,
             'dropoff' => [
-                'address' => $this->order->delivery_address,
-                'latitude' => $this->order->latitude,
-                'longitude' => $this->order->longitude,
+                'address'   => $this->order->snapshot_delivery_address,   // Matches your snapshot_delivery_address column
+                'latitude'  => $this->order->snapshot_delivery_latitude,  // Matches your snapshot_delivery_latitude column
+                'longitude' => $this->order->snapshot_delivery_longitude, // Matches your snapshot_delivery_longitude column
             ]
         ];
     }

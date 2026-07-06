@@ -15,6 +15,14 @@ class DistributePaymentToLedgers implements ShouldQueue
 
         DB::transaction(function () use ($order) {
 
+            $order->ledgers()->create([
+                'sub_order_id'      => null,
+                'user_id'           => $order->customer_id,
+                'transaction_type'  => 'customer_charge',
+                'amount_minor_unit' => $order->total_minor_unit,
+                'status'            => 'completed'
+            ]);
+
             // 1. Process SubOrders (Record Store Payouts + Platform Commissions into Escrow)
             foreach ($order->subOrders as $subOrder) {
                 $storePayout = $subOrder->subtotal_minor_unit - $subOrder->platform_commission_minor_unit;
@@ -28,12 +36,12 @@ class DistributePaymentToLedgers implements ShouldQueue
                     'status'            => 'pending' // Stays pending until successful delivery
                 ]);
 
-                // B. Audit Ledger: Record Platform Commission as PENDING
+                // B. Audit Ledger: Record Platform Commission as COMPLETED
                 $order->ledgers()->create([
                     'sub_order_id'      => $subOrder->id,
                     'transaction_type'  => 'platform_commission',
                     'amount_minor_unit' => $subOrder->platform_commission_minor_unit,
-                    'status'            => 'pending' // Safe from early cancellations
+                    'status'            => 'completed'
                 ]);
             }
 
@@ -42,7 +50,7 @@ class DistributePaymentToLedgers implements ShouldQueue
                 $order->ledgers()->create([
                     'transaction_type'  => 'service_fee_revenue',
                     'amount_minor_unit' => $order->service_fee_minor_unit,
-                    'status'            => 'pending'
+                    'status'            => 'completed'
                 ]);
             }
 

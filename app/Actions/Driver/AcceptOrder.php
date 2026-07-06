@@ -3,6 +3,7 @@
 namespace App\Actions\Driver;
 
 use App\Models\MissionPing;
+use App\Models\OrderStateTransition;
 use App\Models\User;
 use App\Models\Ledger;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +23,7 @@ class AcceptOrder
             }
 
             // 2. Guard Clause: Check if the mission was already claimed by someone else or timed out
-            if ($mission->status !== 'searching') {
+            if ($mission->status !== 'searching_for_driver') {
                 throw new RuntimeException('This request has already been claimed or is no longer available.');
             }
 
@@ -44,9 +45,23 @@ class AcceptOrder
 
             // 6. Synchronize the Parent Order Assignment
             $order = $mission->order;
+            $oldStatus = $order->status;
+
             $order->update([
                 'driver_id' => $driver->id,
                 'status' => 'driver_assigned' // Transitions parent route to the collection phase
+            ]);
+
+            OrderStateTransition::create([
+                'order_id'             => $order->id,
+                'from_status'          => $oldStatus,
+                'to_status'            => 'driver_assigned',
+                'triggered_by_user_id' => $driver->id, // The driver's user ID caused this transition
+                'metadata'             => json_encode([
+                    'context'    => 'Driver explicitly accepted the delivery mission offer.',
+                    'mission_id' => $mission->id,
+                    'ping_id'    => $ping->id
+                ]),
             ]);
 
             // 7. Update Driver Profile to 'busy' using your exact enum value

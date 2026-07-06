@@ -69,42 +69,5 @@ class Order extends Model
 
 
 
-    // In app/Models/Order.php
 
-    /**
-     * Strict Consensus State Machine Engine
-     * Evaluates child sub-order states to accurately advance the parent lifecycle.
-     */
-    public function syncStatus(): void
-    {
-        // Reload relations to clear out internal cached memory state
-        $this->load('subOrders');
-        $subOrders = $this->subOrders;
-
-        // Filter out cancelled sub-orders to isolate only surviving merchant legs
-        $activeSubOrders = $subOrders->filter(fn($s) => $s->status !== 'cancelled');
-
-        // 1. Total Failure: Every single store declined or timed out
-        if ($subOrders->every(fn($s) => $s->status === 'cancelled')) {
-            $this->update(['status' => 'cancelled']);
-        }
-
-        // 2. Strict Consensus: All active, surviving merchants have hit accept
-        elseif ($activeSubOrders->isNotEmpty() && $activeSubOrders->every(fn($s) => $s->status === 'accepted')) {
-            $this->update(['status' => 'accepted']);
-
-            // Fire the dispatch event to alert InitializeDeliveryMission to spin up a rider track
-            event(new \App\Events\OrderReadyForDispatch($this));
-        }
-
-        // 3. Complete Fulfillment: Every single child leg was successfully dropped off
-        elseif ($subOrders->every(fn($s) => $s->status === 'delivered')) {
-            $this->update(['status' => 'delivered']);
-        }
-
-        // 4. Default: Mixed states (e.g., one store accepted, one still pending) stay safe
-        else {
-            $this->update(['status' => 'processing']);
-        }
-    }
 }

@@ -67,23 +67,13 @@ class PlaceMultiVendorOrder
                 'currency_code'             => 'NGN',
             ]);
 
-            // Step B: Record the main customer collection debit row in the ledger
-            Ledger::create([
-                'order_id' => $order->id,
-                'sub_order_id' => null,
-                'transaction_type' => 'customer_charge',
-                'store_id' => null,
-                'user_id' => $customer->id,
-                'amount_minor_unit' => $grandTotalMinorUnit,
-                'currency_code' => 'NGN',
-                'status' => 'pending',
-            ]);
+
 
             // Step C: Route distinct sub-baskets across specific vendor nodes
             foreach ($cartSummary['stores'] as $storeBucket) {
 
                 $commissionMinorUnit = (int) round($storeBucket['store_subtotal_minor_unit'] * 0.125);
-                $vendorNetPayoutMinorUnit = $storeBucket['store_subtotal_minor_unit'] - $commissionMinorUnit;
+
 
                 $subOrder = SubOrder::create([
                     'order_id' => $order->id,
@@ -108,29 +98,9 @@ class PlaceMultiVendorOrder
                     ]);
                 }
 
-                // Step E: Apply explicit escrow distributions
-                Ledger::create([
-                    'order_id' => $order->id,
-                    'sub_order_id' => $subOrder->id,
-                    'transaction_type' => 'vendor_payout',
-                    'store_id' => $storeBucket['store_id'],
-                    'user_id' => null,
-                    'amount_minor_unit' => $vendorNetPayoutMinorUnit,
-                    'currency_code' => 'NGN',
-                    'status' => 'pending',
-                ]);
 
-                // Step F: Book the direct platform commissions revenue line item
-                Ledger::create([
-                    'order_id' => $order->id,
-                    'sub_order_id' => $subOrder->id,
-                    'transaction_type' => 'platform_revenue',
-                    'store_id' => null,
-                    'user_id' => null,
-                    'amount_minor_unit' => $commissionMinorUnit,
-                    'currency_code' => 'NGN',
-                    'status' => 'pending',
-                ]);
+
+
             }
 
             $this->cartService->clear($customer->id);

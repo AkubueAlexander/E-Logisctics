@@ -95,6 +95,8 @@ Route::prefix('v1')->group(function () {
             Route::patch('/profile', [DriverController::class, 'updateProfile']);
             Route::patch('/status', [DriverController::class, 'toggleAvailability']);
 
+            Route::get('/driver/missions/{mission}/itinerary', App\Http\Controllers\Api\Driver\MissionItineraryController::class);
+
             Route::post('location', [LocationController::class, 'update']);
 
             Route::post('sub-orders/{subOrder}/arrive', ArrivalController::class);
@@ -158,7 +160,7 @@ Route::prefix('v1')->group(function () {
             Route::prefix('/{store}')->group(function () {
 
                 // Merchant Order Handling Pipeline
-                                
+
                 Route::patch('orders/{subOrder}/status', [MerchantOrderController::class, 'update']);
 
                 Route::patch('toggle-status', StoreStatusController::class);

@@ -2,9 +2,8 @@
 
 namespace App\Services;
 
+use App\Events\OrderReadyForDispatch;
 use App\Events\Tracking\TimelineEventTriggered;
-use App\Jobs\DispatchOrderCascade;
-use App\Models\DeliveryMission;
 use App\Models\Order;
 use App\Models\OrderStateTransition;
 use App\Models\SubOrder;
@@ -58,8 +57,8 @@ class StoreOrderManagementService
             DB::table('ledgers')->insert([
                 'order_id' => $subOrder->order_id,
                 'sub_order_id' => $subOrder->id,
-                'user_id' => $subOrder->order->customer_id, 
-                'amount_minor_unit' => -$subOrder->subtotal_minor_unit, 
+                'user_id' => $subOrder->order->customer_id,
+                'amount_minor_unit' => -$subOrder->subtotal_minor_unit,
                 'currency_code' => 'NGN',
                 'transaction_type' => 'refund',
                 'status' => 'completed',
@@ -121,17 +120,18 @@ class StoreOrderManagementService
             'metadata' => json_encode(['context' => 'All merchants responded. Order proceeds to fulfillment.']),
         ]);
 
-        DeliveryMission::create([
-            'order_id' => $order->id,
-            'status' => 'pending',
-        ]);
 
-        DispatchOrderCascade::dispatch($order)->afterCommit();
 
-        event(new TimelineEventTriggered($order->id, [
-            'status' => 'searching_for_driver',
-            'message' => 'Your order has been accepted and is being prepared.',
-        ]));
+        DB::afterCommit(function () use ($order) {
+            // 1. Safe to notify customer - DB state is guaranteed
+            event(new TimelineEventTriggered($order->id, [
+                'status' => 'searching_for_driver',
+                'message' => 'Your order has been accepted and is being prepared.',
+            ]));
+
+            // 2. Safe to trigger dispatch engine
+            event(new OrderReadyForDispatch($order));
+        });
     }
 
     /**

@@ -28,7 +28,7 @@ class DispatchOrderCascade implements ShouldQueue
     public function handle(FindNearbyDriversForOrder $finder): void
     {
         // 1. Fetch fresh state with relations (Lock removed as it's useless outside a transaction)
-        $freshOrder = $this->order->fresh(['deliveryMission']);
+        $freshOrder = $this->order->fresh(['deliveryMission', 'subOrders.store']);
 
         if (!$freshOrder || $freshOrder->status !== 'searching_for_driver' || $freshOrder->driver_id !== null) {
             Log::info("DispatchCascade: Order #{$this->order->id} is no longer eligible for dispatching.");
@@ -47,7 +47,7 @@ class DispatchOrderCascade implements ShouldQueue
 
         if ($nearbyDrivers->isEmpty()) {
             Log::warning("DispatchCascade: Zero online drivers found within {$radiusKm}km for Order #{$freshOrder->id}. Retrying loop in 30s.");
-            self::dispatch($freshOrder)->delay(now()->addSeconds(30));
+            self::dispatch($freshOrder)->delay(now()->addSeconds(60));
             return;
         }
 

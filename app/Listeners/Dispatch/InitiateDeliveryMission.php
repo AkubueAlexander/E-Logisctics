@@ -3,6 +3,7 @@
 namespace App\Listeners\Dispatch;
 
 use App\Events\OrderReadyForDispatch;
+use App\Jobs\DispatchOrderCascade;
 use App\Models\DeliveryMission;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
@@ -19,12 +20,14 @@ class InitializeDeliveryMission implements ShouldQueue
     public function handle(OrderReadyForDispatch $event): void
     {
         $order = $event->order; // Matches: public Order $order
-
+        // searching
         DeliveryMission::create([
             'order_id' => $order->id,
-            'status' => 'searching',
+            'status' => 'searching_for_driver',
             'delivery_fee_minor_unit' => $order->delivery_fee_minor_unit,
         ]);
+
+        DispatchOrderCascade::dispatch($order);
     }
 
     public function failed(OrderReadyForDispatch $event, \Throwable $exception): void

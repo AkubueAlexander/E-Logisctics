@@ -17,11 +17,12 @@ class TransitionOrderState implements ShouldQueue
             $order->stateTransitions()->create([
                 'from_status' => $order->status,
                 'to_status'   => 'pending_acceptance',
-                'triggered_by' => 'payment_success',
+                'triggered_by_user_id' => $order->customer_id,
                 'metadata'     => [
                     'gateway'      => 'flutterwave',
                     'attempt_id'   => $order->transaction_reference,
-                    'ip_address'   => request()->ip()
+                    'ip_address'   => request()->ip(),
+                    'reason'       => 'payment_success'
                 ]
             ]);
 
