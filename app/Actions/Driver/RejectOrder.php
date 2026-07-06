@@ -23,7 +23,7 @@ class RejectOrder
                 $mission = $currentPing->deliveryMission;
 
                 // 3. If the mission is still actively looking for a rider, cascade instantly
-                if ($mission && $mission->status === 'searching') {
+                if ($mission && $mission->status === 'searching_for_driver') {
                     DispatchOrderCascade::dispatch($mission->order);
                 }
             }

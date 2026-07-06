@@ -5,64 +5,87 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
+use Throwable;
 
 class FlushTelemetryQueue extends Command
 {
-    protected $signature = 'telemetry:flush';
-    protected $description = 'Atomically offload high-velocity driver GPS tracking data from Redis to PostgreSQL.';
+    protected $signature = 'telemetry:flush {--chunk=1000}';
+    protected $description = 'Atomically offload high-velocity driver GPS tracking data from Redis to PostgreSQL without data loss risk.';
 
     public function handle(): int
     {
         $mainKey = 'telemetry:breadcrumbs';
-        $processingKey = 'telemetry:breadcrumbs:processing';
+        $chunkSize = (int) $this->option('chunk');
 
-        // 1. Guard against empty queues
+        // 1. Check if there is anything to do without locking resources
         if (!Redis::exists($mainKey)) {
             $this->info('No breadcrumbs to flush.');
             return Command::SUCCESS;
         }
 
-        // 2. Atomic Rotation: Isolates current logs so incoming writes don't get lost
-        Redis::rename($mainKey, $processingKey);
-
-        // 3. Retrieve all strings from our isolated snapshot array
-        $payloads = Redis::lrange($processingKey, 0, -1);
-
-        // Delete the processing key instantly from memory
-        Redis::del($processingKey);
-
-        if (empty($payloads)) {
-            return Command::SUCCESS;
-        }
-
-        // 4. Batch Compilation
-        $bindings = [];
-        $queryValues = [];
-
-        foreach ($payloads as $rawJson) {
+        $batch = [];
+        
+        // 2. Safely pop a finite chunk of logs out of Redis. 
+        // This allows multiple Kubernetes worker pods to safely pull from the same queue simultaneously.
+        for ($i = 0; $i < $chunkSize; $i++) {
+            $rawJson = Redis::lpop($mainKey);
+            if (!$rawJson) {
+                break; // Queue is fully drained
+            }
+            
+            // Handle double-encoded nested JSON edge cases safely
             $data = json_decode($rawJson, true);
-            if (!$data) continue;
+            if (is_string($data)) {
+                $data = json_decode($data, true);
+            }
 
-            // Compile parameterized raw layout values for PostGIS insertion
-            $queryValues[] = '(?, ?, ST_GeomFromText(?))';
+            if (!isset($data['order_id'], $data['latitude'], $data['longitude'], $data['recorded_at'])) {
+                continue; // Skip corrupted frames
+            }
 
-            $bindings[] = $data['order_id'];
-            $bindings[] = $data['recorded_at'];
-            $bindings[] = "POINT({$data['longitude']} {$data['latitude']})"; // PostGIS requires (Lng Lat) layout
+            $batch[] = $data;
         }
 
-        if (empty($queryValues)) {
+        if (empty($batch)) {
             return Command::SUCCESS;
         }
 
-        // 5. Atomic PostgreSQL Write Chunk Frame
-        $rawSql = "INSERT INTO driver_telemetry_breadcrumbs (order_id, recorded_at, coordinates) VALUES " . implode(', ', $queryValues);
+        // 3. Compile parameterized layout statements
+        $queryValues = [];
+        $bindings = [];
 
-        DB::transaction(function () use ($rawSql, $bindings) {
-            DB::insert($rawSql, $bindings);
-        });
+        foreach ($batch as $record) {
+            // Note: 4326 represents the standard spatial SRID for WGS 84 GPS coordinates
+            $queryValues[] = '(?, ?, ST_GeomFromText(?, 4326))';
+            
+            $bindings[] = $record['order_id'];
+            $bindings[] = $record['recorded_at'];
+            $bindings[] = "POINT({$record['longitude']} {$record['latitude']})";
+        }
 
-        $this->info("Successfully flushed " . count($queryValues) . " telemetric coordinates into PostgreSQL.");
+        // 4. Atomic Database Write Frame
+       
+        $rawSql = "INSERT INTO driver_telemetry_breadcrumbs (order_id, created_at, coordinates) VALUES " . implode(', ', $queryValues);
+
+        try {
+            DB::transaction(function () use ($rawSql, $bindings) {
+                DB::insert($rawSql, $bindings);
+            });
+
+            $this->info("Successfully flushed " . count($batch) . " tracking coordinates into PostgreSQL.");
+        } catch (Throwable $e) {
+            $this->error("Database write failure: " . $e->getMessage());
+
+            // 5. THE FAIL-SAFE: If PostgreSQL goes down, push items back to Redis instantly.
+            // This prevents your core application from losing a single trace of historical distance.
+            foreach ($batch as $failedRecord) {
+                Redis::rpush($mainKey, json_encode($failedRecord));
+            }
+
+            $this->warn("Re-queued " . count($batch) . " entries back into Redis memory buffer.");
+            return Command::FAILURE;
+        }
+
         return Command::SUCCESS;
     }
 }

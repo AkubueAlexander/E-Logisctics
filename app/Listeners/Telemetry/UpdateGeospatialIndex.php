@@ -8,22 +8,26 @@ use Illuminate\Support\Facades\Redis;
 class UpdateGeospatialIndex
 {
     /**
-     * NO 'ShouldQueue' here. GPS streams run live directly into Redis.
+     * INTELLIGENCE: Synchronous Redis Ingestion
+     * No 'ShouldQueue' here. High-frequency coordinates bypass MySQL completely
+     * to protect database disk IOPS under heavy traffic.
      */
     public function handle(DriverLocationUpdated $event): void
     {
-        // Matches primitive primitives: orderId, latitude, longitude, heading
+        // 1. Index the coordinate by order context using real properties
+        // (orderId, longitude, latitude, heading)
         Redis::geoadd(
-            "order:tracking:coordinates",
+            'orders:spatial_index',
             $event->longitude,
             $event->latitude,
             (string) $event->orderId
         );
 
-        Redis::hmset("order:tracking:meta:{$event->orderId}", [
-            'latitude' => $event->latitude,
-            'longitude' => $event->longitude,
-            'heading' => $event->heading,
+        // 2. Cache structural telemetry metadata for ultra-fast API lookups
+        Redis::hmset("orders:telemetry:{$event->orderId}", [
+            'latitude'   => $event->latitude,
+            'longitude'  => $event->longitude,
+            'heading'    => $event->heading,
             'updated_at' => now()->timestamp
         ]);
     }

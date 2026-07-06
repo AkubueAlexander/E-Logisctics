@@ -27,7 +27,6 @@ class MarkDriverArrived
             }
 
             // Guard 2: State Machine Integrity
-            // They can only arrive if the vendor has accepted it and they are currently assigned
             if ($subOrder->status !== 'accepted') {
                 throw new UnprocessableEntityHttpException('Invalid state transition: Order is not ready for pickup.');
             }
@@ -39,7 +38,6 @@ class MarkDriverArrived
                 throw new UnprocessableEntityHttpException('Store location data is missing. Cannot verify proximity.');
             }
 
-            // Use ST_DistanceSphere to calculate exact distance in meters on the Earth's curvature
             $distanceMeters = (float) DB::scalar(
                 "SELECT ST_DistanceSphere(ST_GeomFromText(?), ST_GeomFromText(?))",
                 [
@@ -54,13 +52,13 @@ class MarkDriverArrived
                 );
             }
 
-            // Mutation: Lock in the arrival state
+            // Mutation: Lock in the arrival state and timestamp at once
             $subOrder->update([
-                'status' => 'driver_arrived'
+                'status'               => 'driver_arrived',
+                'arrived_at_vendor_at' => now(),
             ]);
 
-
-             broadcast(new \App\Events\DriverArrivedAtStore($subOrder));
+            broadcast(new \App\Events\DriverArrivedAtStore($subOrder));
 
             return $subOrder;
         });

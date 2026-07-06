@@ -25,27 +25,31 @@ class CheckPingTimeoutJob implements ShouldQueue
     {
         // Use database transactions and locks to prevent race conditions if a driver accepts right at the deadline
         DB::transaction(function () {
-
-            // Query using the passed ID, lock the row, and eager load relations
-            $freshPing = MissionPing::with('deliveryMission.order')
+            // Lock row and eager load relations to prevent race conditions and N+1 issues
+            $ping = MissionPing::with('deliveryMission.order')
                 ->lockForUpdate()
                 ->find($this->pingId);
 
-            // Guard Clause: If the ping was deleted, accepted, or manually rejected, step away immediately
-            if (!$freshPing || $freshPing->status !== 'sent') {
+            // If the driver already clicked 'accepted' or 'rejected', stand down completely
+            if (!$ping || $ping->status !== 'sent') {
                 return;
             }
 
-            // 1. Permanently invalidate this specific ping record
-            $freshPing->update(['status' => 'timed_out']);
+            // 1. Core State Transition: Mark this specific ping as timed out
+            $ping->update([
+                'status' => 'timed_out'
+            ]);
 
-            $mission = $freshPing->deliveryMission;
-            $order = $mission->order;
+            $mission = $ping->deliveryMission;
 
-            Log::info("DispatchTimeout: Ping #{$freshPing->id} for Order #{$order->id} timed out. Re-entering cascade.");
-
-            // 2. Seamlessly trigger the matching engine loop to pick up the next candidate
-            DispatchOrderCascade::dispatch($order);
+            // 2. Trigger the Next Cascade Pool Lookup
+            // Using 'searching_for_driver' to match your AcceptOrder and DispatchOrderCascade flow
+            if ($mission && $mission->status === 'searching_for_driver') {
+                Log::info("HandlePingTimeout: Ping #{$ping->id} timed out. Re-triggering cascade loop for Order #{$mission->order->id}");
+                
+                // RE-TRIGGER DISPATCH ENGINE
+                DispatchOrderCascade::dispatch($mission->order);
+            }
         });
     }
 }

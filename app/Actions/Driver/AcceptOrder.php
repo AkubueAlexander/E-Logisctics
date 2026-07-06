@@ -2,10 +2,10 @@
 
 namespace App\Actions\Driver;
 
+use App\Models\Ledger;
 use App\Models\MissionPing;
 use App\Models\OrderStateTransition;
 use App\Models\User;
-use App\Models\Ledger;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -18,7 +18,7 @@ class AcceptOrder
             // 1. Pessimistic Lock on the Delivery Mission to prevent any concurrency race conditions
             $mission = $ping->deliveryMission()->lockForUpdate()->first();
 
-            if (!$mission) {
+            if (! $mission) {
                 throw new RuntimeException('The target delivery mission does not exist.');
             }
 
@@ -34,7 +34,7 @@ class AcceptOrder
 
             // 4. Update the Specific Ping Status
             $ping->update([
-                'status' => 'accepted'
+                'status' => 'accepted',
             ]);
 
             // 5. Lock down the Delivery Mission Wrapper
@@ -49,36 +49,52 @@ class AcceptOrder
 
             $order->update([
                 'driver_id' => $driver->id,
-                'status' => 'driver_assigned' // Transitions parent route to the collection phase
+                'status' => 'driver_assigned', // Transitions parent route to the collection phase
             ]);
 
             OrderStateTransition::create([
-                'order_id'             => $order->id,
-                'from_status'          => $oldStatus,
-                'to_status'            => 'driver_assigned',
+                'order_id' => $order->id,
+                'from_status' => $oldStatus,
+                'to_status' => 'driver_assigned',
                 'triggered_by_user_id' => $driver->id, // The driver's user ID caused this transition
-                'metadata'             => json_encode([
-                    'context'    => 'Driver explicitly accepted the delivery mission offer.',
+                'metadata' => json_encode([
+                    'context' => 'Driver explicitly accepted the delivery mission offer.',
                     'mission_id' => $mission->id,
-                    'ping_id'    => $ping->id
+                    'ping_id' => $ping->id,
                 ]),
             ]);
 
             // 7. Update Driver Profile to 'busy' using your exact enum value
             $driver->driverProfile()->update([
-                'availability_status' => 'busy'
+                'availability_status' => 'busy',
             ]);
 
             // 8. Financial Ledger Allocation: Book the driver's delivery fee into escrow
+            $deliveryFee = $order->delivery_fee_minor_unit;
+
+            // A. Neutralize the anonymous escrow.
+            // It MUST be 'pending' so it cancels out the original pending payment entry.
+            Ledger::create([
+                'order_id' => $order->id,
+                'sub_order_id' => null,
+                'transaction_type' => 'delivery_escrow_reversal',
+                'store_id' => null,
+                'user_id' => null,
+                'amount_minor_unit' => -$deliveryFee, // Negative to offset
+                'currency_code' => 'NGN',
+                'status' => 'pending', // Matches original status
+            ]);
+
+            // B. Track the new liability for the assigned driver
             Ledger::create([
                 'order_id' => $order->id,
                 'sub_order_id' => null,
                 'transaction_type' => 'driver_payout',
                 'store_id' => null,
                 'user_id' => $driver->id,
-                'amount_minor_unit' => $mission->delivery_fee_minor_unit,
+                'amount_minor_unit' => $deliveryFee, // Positive liability
                 'currency_code' => 'NGN',
-                'status' => 'pending', // Settle only when final drop-off is verified
+                'status' => 'pending', // Stays pending until drop-off
             ]);
 
             return $ping;

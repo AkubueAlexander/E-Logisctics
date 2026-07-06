@@ -2,7 +2,7 @@
 
 namespace App\Listeners\Telemetry;
 
-use App\Events\DriverPinged;
+use App\Events\DriverLocationUpdated;
 use Illuminate\Support\Facades\Redis;
 
 class TrackDriverHeartbeat
@@ -10,15 +10,13 @@ class TrackDriverHeartbeat
     /**
      * NO 'ShouldQueue' here. High-frequency pings run synchronously in memory.
      */
-    public function handle(DriverPinged $event): void
+    public function handle(DriverLocationUpdated $event): void
     {
-        // Matches constructor types: public MissionPing $ping, public DeliveryMission $mission
-        $ping = $event->ping;
-
+        // Atomically set/refresh the driver's live presence key in Redis with a 35-second TTL
         Redis::setex(
-            "dispatch:active_ping:{$ping->driver_id}",
+            "dispatch:active_ping:{$event->driverId}",
             35,
-            $event->mission->id
+            $event->orderId
         );
     }
 }

@@ -16,6 +16,7 @@ class DriverLocationUpdated implements ShouldBroadcastNow
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public function __construct(
+        public int $driverId,
         public int $orderId,
         public float $latitude,
         public float $longitude,

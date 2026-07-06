@@ -40,15 +40,22 @@ class MarkSubOrderPickedUp
                 ->doesntExist();
 
             if ($allSubOrdersInTransit && $order->status !== 'in_transit') {
+                
+                // Capture the real current status before mutating the model
+                $previousStatus = $order->status;
+
                 $order->update([
                     'status' => 'in_transit'
                 ]);
 
-                // Log the orchestration state transition
+                // Log the orchestration state transition with the correct DB columns
                 $order->stateTransitions()->create([
-                    'from_status'  => 'searching_for_driver', // or whatever the previous parent state was
-                    'to_status'    => 'in_transit',
-                    'triggered_by' => 'driver_pickup_complete',
+                    'from_status'          => $previousStatus,
+                    'to_status'            => 'in_transit',
+                    'triggered_by_user_id' => $driver->id, // <-- Appending the driver's User ID here
+                    'metadata'             => [
+                        'action_trigger' => 'driver_pickup_complete'
+                    ], // <-- Safeguarding string tags inside your jsonb column
                 ]);
             }
 

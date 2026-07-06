@@ -53,14 +53,14 @@ class NewMissionOfferDispatched implements ShouldBroadcastNow
         return [
             'order_id'               => $this->order->id,
             'delivery_fee_formatted' => number_format($this->order->delivery_fee_minor_unit / 100, 2),
-            'currency'               => $this->order->currency_code, // Matches your currency_code column
+            'currency'               => $this->order->currency_code, 
             'timeout_seconds'        => $this->timeoutSeconds,
             'total_stops'            => count($pickups) + 1,
             'pickups'                => $pickups,
             'dropoff' => [
-                'address'   => $this->order->snapshot_delivery_address,   // Matches your snapshot_delivery_address column
-                'latitude'  => $this->order->snapshot_delivery_latitude,  // Matches your snapshot_delivery_latitude column
-                'longitude' => $this->order->snapshot_delivery_longitude, // Matches your snapshot_delivery_longitude column
+                'address'   => $this->order->snapshot_delivery_address,   
+                'latitude'  => $this->order->snapshot_delivery_latitude,  
+                'longitude' => $this->order->snapshot_delivery_longitude, 
             ]
         ];
     }
