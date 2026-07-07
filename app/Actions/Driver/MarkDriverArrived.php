@@ -2,6 +2,7 @@
 
 namespace App\Actions\Driver;
 
+use App\Events\DriverArrivedAtStore;
 use App\Models\SubOrder;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -55,10 +56,10 @@ class MarkDriverArrived
             // Mutation: Lock in the arrival state and timestamp at once
             $subOrder->update([
                 'status'               => 'driver_arrived',
-                'arrived_at_vendor_at' => now(),
+                'updated_at' => now(),
             ]);
 
-            broadcast(new \App\Events\DriverArrivedAtStore($subOrder));
+            broadcast(new DriverArrivedAtStore($subOrder));
 
             return $subOrder;
         });
