@@ -40,7 +40,7 @@ class MarkSubOrderPickedUp
                 ->doesntExist();
 
             if ($allSubOrdersInTransit && $order->status !== 'in_transit') {
-                
+
                 // Capture the real current status before mutating the model
                 $previousStatus = $order->status;
 
@@ -55,8 +55,10 @@ class MarkSubOrderPickedUp
                     'triggered_by_user_id' => $driver->id, // <-- Appending the driver's User ID here
                     'metadata'             => [
                         'action_trigger' => 'driver_pickup_complete'
-                    ], // <-- Safeguarding string tags inside your jsonb column
+                    ],
                 ]);
+
+                event(new \App\Events\OrderInTransit($order));
             }
 
             return $subOrder;

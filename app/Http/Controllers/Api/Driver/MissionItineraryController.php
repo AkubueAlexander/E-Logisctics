@@ -20,7 +20,7 @@ class MissionItineraryController extends Controller
             return response()->json(['message' => 'Unauthorized Access to this mission.'], 403);
         }
 
-        $order = $mission->order()->with(['subOrders.store'])->first();
+        $order = $mission->order()->with(['subOrders.store', 'customer'])->first();
         $stops = [];
         $sequence = 1;
 
@@ -62,7 +62,7 @@ class MissionItineraryController extends Controller
             'latitude'       => $order->snapshot_delivery_latitude,  
             'longitude'      => $order->snapshot_delivery_longitude, 
             'status'         => $order->status, 
-            // Customer dropoff code is strictly hidden from the driver's itinerary endpoint
+            'customer_phone' => $order->customer->phone_number,
         ];
 
         return response()->json([

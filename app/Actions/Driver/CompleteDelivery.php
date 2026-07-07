@@ -3,37 +3,49 @@
 namespace App\Actions\Driver;
 
 use App\Models\SubOrder;
-use App\Models\Ledger;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
+use App\Events\SubOrderDeliveredEvent;
 
 class CompleteDelivery
 {
     protected const DELIVERY_GEOFENCE_RADIUS_METERS = 300.0;
 
-    public function execute(User $driver, SubOrder $subOrder, float $lat, float $lng, ?string $pin = null): SubOrder
+    /**
+     * Coordinate strict state checks, PostGIS geofencing, Redis OTP verification,
+     * and transition lifecycle states within a safe database transaction.
+     */
+    public function execute(User $driver, SubOrder $subOrder, float $lat, float $lng, string $otp): SubOrder
     {
-        return DB::transaction(function () use ($driver, $subOrder, $lat, $lng, $pin) {
-
+        return DB::transaction(function () use ($driver, $subOrder, $lat, $lng, $otp) {
             $order = $subOrder->order;
 
-            // Guard 1: Ownership
+            // Guard 1: Ownership Verification
             if ($order->driver_id !== $driver->id) {
                 throw new AccessDeniedHttpException('Unauthorized: You are not assigned to this mission.');
             }
 
-            // Guard 2: State Enforcement
+            // Guard 2: Strict Workflow State Enforcement
             if ($subOrder->status !== 'in_transit') {
                 throw new UnprocessableEntityHttpException(
                     "Cannot mark as delivered. Current status is '{$subOrder->status}', expected 'in_transit'."
                 );
             }
 
-            // Guard 3: Geofence Verification
+            // Guard 3: Redis Handover OTP Verification
+            $cacheKey = "delivery_otp:order:{$order->id}";
+            $storedOtp = Cache::store('redis')->get($cacheKey);
+
+            if (!$storedOtp || (string) $storedOtp !== (string) $otp) {
+                throw new UnprocessableEntityHttpException('Invalid or expired handover verification code.');
+            }
+
+            // Guard 4: Spatial Geofence Verification
             if (!$order->snapshot_delivery_latitude || !$order->snapshot_delivery_longitude) {
-                throw new UnprocessableEntityHttpException('Customer delivery coordinates are missing.');
+                throw new UnprocessableEntityHttpException('Customer delivery coordinates are missing from the master order.');
             }
 
             $distanceMeters = (float) DB::scalar(
@@ -50,43 +62,40 @@ class CompleteDelivery
                 );
             }
 
-            // 1. Advance SubOrder Status
-            $subOrder->update(['status' => 'delivered']);
+            // 1. Advance Individual SubOrder Status
+            $subOrder->update([
+                'status' => 'delivered'
+            ]);
 
-            // 2. Financial Settlement: Release Vendor & Platform Escrow lines
-            Ledger::where('sub_order_id', $subOrder->id)
-                ->where('status', 'pending')
-                ->update([
-                    'status' => 'completed',
-                    'updated_at' => now()
-                ]);
-
-            // 3. Synchronize Parent Order
+            // 2. Evaluate and Synchronize Parent Master Order Lifecycle
             $allDelivered = $order->subOrders()->where('status', '!=', 'delivered')->doesntExist();
+            $masterOrderCompleted = false;
 
             if ($allDelivered && $order->status !== 'completed') {
-
-                $order->update(['status' => 'completed']);
-
-                // BOOK DRIVER EARNINGS: Write the completed payout line to the ledger
-                Ledger::create([
-                    'order_id'          => $order->id,
-                    'sub_order_id'      => null,
-                    'transaction_type'  => 'driver_payout',
-                    'store_id'          => null,
-                    'user_id'           => $driver->id, // Assigned to the driver's account
-                    'amount_minor_unit' => $order->delivery_fee_minor_unit, // Earns the exact delivery fee
-                    'currency_code'     => 'NGN',
-                    'status'            => 'completed', // Settled immediately because the delivery is done
+                $order->update([
+                    'status' => 'completed'
                 ]);
 
-                // Free up driver availability
-                $driver->driverProfile()->update(['availability_status' => 'available']);
+                // Free up driver availability mapping for immediate dispatch loop matching
+                $driver->driverProfile()->update([
+                    'availability_status' => 'available'
+                ]);
 
+                // Tear down operational tracking components
                 if ($order->deliveryMission) {
-                    $order->deliveryMission()->update(['status' => 'completed']);
+                    $order->deliveryMission()->update([
+                        'status' => 'completed'
+                    ]);
                 }
+
+                $masterOrderCompleted = true;
+
+                // Evict token from memory since the master delivery chain is securely finalized
+                Cache::store('redis')->forget($cacheKey);
             }
+
+            // 3. Dispatch operational event out of the transaction lifecycle to handle financial computations
+            event(new SubOrderDeliveredEvent($subOrder, $masterOrderCompleted));
 
             return $subOrder;
         });
