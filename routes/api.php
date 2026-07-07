@@ -103,7 +103,7 @@ Route::prefix('v1')->group(function () {
             Route::post('sub-orders/{subOrder}/pickup', PickupController::class);
             Route::post('sub-orders/{subOrder}/deliver', DeliveryController::class);
 
-            Route::post('telemetry/location', TelemetryController::class);
+
             Route::get('wallet/summary', [WalletController::class, 'index']);
 
             Route::get('wallet', [WalletController::class, 'index']);
@@ -114,9 +114,6 @@ Route::prefix('v1')->group(function () {
             Route::post('/pings/{ping}/accept', OrderAcceptanceController::class);
             Route::post('/pings/{ping}/reject', OrderRejectionController::class);
 
-            Route::post('orders/{order}/arrive', [DriverOrderTransitController::class, 'arriveAtMerchant']);
-            Route::post('orders/{order}/collect', [DriverOrderTransitController::class, 'collectOrder']);
-            Route::post('orders/{order}/complete', [DriverOrderTransitController::class, 'completeDelivery']);
 
 
         });

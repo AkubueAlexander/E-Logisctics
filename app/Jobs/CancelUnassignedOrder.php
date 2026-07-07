@@ -47,7 +47,7 @@ class CancelUnassignedOrder implements ShouldQueue
 
             // 2. Transition the Underlying Delivery Mission Wrapper
             $mission = $order->deliveryMission;
-            if ($mission && $mission->status === 'searching') {
+            if ($mission && $mission->status === 'searching_for_driver') {
                 $mission->update([
                     'status' => 'timed_out' // Matches your strict migration enum values
                 ]);

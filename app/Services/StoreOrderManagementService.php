@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
-use App\Events\OrderReadyForDispatch;
+
 use App\Events\Tracking\TimelineEventTriggered;
+use App\Jobs\CancelUnassignedOrder;
+use App\Jobs\DispatchOrderCascade;
 use App\Models\Order;
 use App\Models\OrderStateTransition;
 use App\Models\SubOrder;
@@ -129,8 +131,11 @@ class StoreOrderManagementService
                 'message' => 'Your order has been accepted and is being prepared.',
             ]));
 
-            // 2. Safe to trigger dispatch engine
-            event(new OrderReadyForDispatch($order));
+            // Kick off your dispatch engine jobs from Approach B
+            DispatchOrderCascade::dispatch($order);
+
+            // Start the 30-minute cancellation safety net timer!
+            CancelUnassignedOrder::dispatch($order->id)->delay(now()->addMinutes(30));
         });
     }
 
