@@ -111,6 +111,11 @@ class StoreOrderManagementService
         // ------------------------------------------------------------------------
         // Scenario B: Viable Progression (At least one store accepted, zero pending)
         // ------------------------------------------------------------------------
+
+        if ($oldParentStatus !== 'pending_acceptance') {
+            return;
+        }
+
         $order->update(['status' => 'searching_for_driver']);
 
         // LOG REAL TRANSITION: Record the actual step the parent order just took

@@ -2,7 +2,7 @@
 
 namespace App\Actions\Driver;
 
-use App\Models\SubOrder;
+use App\Models\Order;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
@@ -16,12 +16,14 @@ class CompleteDelivery
 
     /**
      * Coordinate strict state checks, PostGIS geofencing, Redis OTP verification,
-     * and transition lifecycle states within a safe database transaction.
+     * and transition lifecycle states.
      */
-    public function execute(User $driver, SubOrder $subOrder, float $lat, float $lng, string $otp): SubOrder
+    public function execute(User $driver, Order $order, float $lat, float $lng, string $otp): Order
     {
-        return DB::transaction(function () use ($driver, $subOrder, $lat, $lng, $otp) {
-            $order = $subOrder->order;
+        // Array to hold sub-orders so we can fire events outside the transaction
+        $deliveredSubOrders = [];
+
+        DB::transaction(function () use ($driver, $order, $lat, $lng, $otp, &$deliveredSubOrders) {
 
             // Guard 1: Ownership Verification
             if ($order->driver_id !== $driver->id) {
@@ -29,9 +31,9 @@ class CompleteDelivery
             }
 
             // Guard 2: Strict Workflow State Enforcement
-            if ($subOrder->status !== 'in_transit') {
+            if ($order->status !== 'in_transit') {
                 throw new UnprocessableEntityHttpException(
-                    "Cannot mark as delivered. Current status is '{$subOrder->status}', expected 'in_transit'."
+                    "Cannot mark as delivered. Current status is '{$order->status}', expected 'in_transit'."
                 );
             }
 
@@ -45,7 +47,7 @@ class CompleteDelivery
 
             // Guard 4: Spatial Geofence Verification
             if (!$order->snapshot_delivery_latitude || !$order->snapshot_delivery_longitude) {
-                throw new UnprocessableEntityHttpException('Customer delivery coordinates are missing from the master order.');
+                throw new UnprocessableEntityHttpException('Customer delivery coordinates are missing.');
             }
 
             $distanceMeters = (float) DB::scalar(
@@ -62,42 +64,45 @@ class CompleteDelivery
                 );
             }
 
-            // 1. Advance Individual SubOrder Status
-            $subOrder->update([
-                'status' => 'delivered'
-            ]);
+            // 1. Process all in-transit sub-orders at once safely
 
-            // 2. Evaluate and Synchronize Parent Master Order Lifecycle
-            $allDelivered = $order->subOrders()->where('status', '!=', 'delivered')->doesntExist();
-            $masterOrderCompleted = false;
+            $subOrders = $order->subOrders()
+                ->where('status', 'in_transit')
+                ->lockForUpdate()
+                ->get();
 
-            if ($allDelivered && $order->status !== 'completed') {
-                $order->update([
-                    'status' => 'completed'
-                ]);
-
-                // Free up driver availability mapping for immediate dispatch loop matching
-                $driver->driverProfile()->update([
-                    'availability_status' => 'available'
-                ]);
-
-                // Tear down operational tracking components
-                if ($order->deliveryMission) {
-                    $order->deliveryMission()->update([
-                        'status' => 'completed'
-                    ]);
-                }
-
-                $masterOrderCompleted = true;
-
-                // Evict token from memory since the master delivery chain is securely finalized
-                Cache::store('redis')->forget($cacheKey);
+            foreach ($subOrders as $subOrder) {
+                $subOrder->update(['status' => 'delivered']);
+                $deliveredSubOrders[] = $subOrder;
             }
 
-            // 3. Dispatch operational event out of the transaction lifecycle to handle financial computations
-            event(new SubOrderDeliveredEvent($subOrder, $masterOrderCompleted));
+            // 2. Finalize Master Order Lifecycle
+            $order->update([
+                'status' => 'completed'
+            ]);
 
-            return $subOrder;
+            // 3. Free up driver availability mapping for your dispatch engine
+            $driver->driverProfile()->update([
+                'availability_status' => 'available'
+            ]);
+
+            // 4. Tear down operational tracking components
+            if ($order->deliveryMission) {
+                $order->deliveryMission()->update([
+                    'status' => 'completed'
+                ]);
+            }
+
+            // 5. Evict OTP token
+            Cache::store('redis')->forget($cacheKey);
         });
+
+        // 6. Dispatch events safely OUTSIDE the transaction.
+
+        foreach ($deliveredSubOrders as $subOrder) {
+            event(new SubOrderDeliveredEvent($subOrder, true));
+        }
+
+        return $order;
     }
 }

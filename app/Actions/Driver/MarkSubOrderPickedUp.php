@@ -2,6 +2,7 @@
 
 namespace App\Actions\Driver;
 
+use App\Events\OrderInTransit;
 use App\Models\SubOrder;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -58,7 +59,7 @@ class MarkSubOrderPickedUp
                     ],
                 ]);
 
-                event(new \App\Events\OrderInTransit($order));
+                event(new OrderInTransit($order));
             }
 
             return $subOrder;

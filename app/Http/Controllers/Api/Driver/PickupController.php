@@ -19,7 +19,7 @@ class PickupController extends Controller
             $action->execute($request->user(), $subOrder);
 
             return response()->json([
-                'message' => 'Items picked up successfully. Proceed to delivery.',
+                'message' => 'Items picked up successfully',
                 'status'  => 'in_transit'
             ], 200);
 

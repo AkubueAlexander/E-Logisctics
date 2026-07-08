@@ -1,9 +1,10 @@
 <?php
-namespace App\Listeners;
+namespace App\Listeners\Customer;
 
-use App\Events\OrderInTransitEvent;
+use App\Events\OrderInTransit;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\CustomerDeliveryOtpMail;
 
@@ -24,8 +25,10 @@ class GenerateAndSendDeliveryOtp implements ShouldQueue
         $cacheKey = "delivery_otp:order:{$order->id}";
         Cache::store('redis')->put($cacheKey, $otp, now()->addHours(2));
 
+        Log::info("Testing OTP for Order #{$order->id}: {$otp}");
+
         // 3. Dispatch the Email to the Customer
-        // (Assuming the Order model has a 'customer' relationship)
+
         Mail::to($order->customer->email)->send(new CustomerDeliveryOtpMail($otp, $order));
     }
 }

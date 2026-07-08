@@ -3,19 +3,22 @@
 namespace App\Http\Controllers\Api\Store;
 
 use App\Http\Controllers\Controller;
+use App\Models\Store;
 use App\Models\SubOrder;
 use App\Models\OrderStateTransition;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Gate;
 
 class StoreHandoverController extends Controller
 {
     /**
      * Confirm the driver's identity at the store counter using the single-use OTP token.
      */
-    public function __invoke(Request $request): JsonResponse
+    public function __invoke(Request $request, Store $store): JsonResponse
     {
+        Gate::authorize('update', $store);
         $validated = $request->validate([
             'sub_order_id'      => ['required', 'integer', 'exists:sub_orders,id'],
             'verification_code' => ['required', 'string', 'size:6'],

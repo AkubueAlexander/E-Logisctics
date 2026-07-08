@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Driver;
 
 use App\Http\Controllers\Controller;
+use App\Models\Order;
 use App\Models\SubOrder;
 use App\Http\Requests\Driver\DeliveryVerificationRequest;
 use App\Actions\Driver\CompleteDelivery;
@@ -17,13 +18,13 @@ class DeliveryController extends Controller
      */
     public function __invoke(
         DeliveryVerificationRequest $request,
-        SubOrder $subOrder,
+        Order $order,
         CompleteDelivery $action
     ): JsonResponse {
         try {
             $action->execute(
                 $request->user(),
-                $subOrder,
+                $order,
                 (float) $request->validated('latitude'),
                 (float) $request->validated('longitude'),
                 (string) $request->validated('otp')

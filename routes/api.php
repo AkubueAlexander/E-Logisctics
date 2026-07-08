@@ -8,13 +8,12 @@ use App\Http\Controllers\Api\Customer\StoreDiscoveryController;
 use App\Http\Controllers\Api\Driver\ArrivalController;
 use App\Http\Controllers\Api\Driver\DeliveryController;
 use App\Http\Controllers\Api\Driver\DriverController;
-use App\Http\Controllers\Api\Driver\DriverOrderTransitController;
 use App\Http\Controllers\Api\Driver\LocationController;
+use App\Http\Controllers\Api\Driver\MissionItineraryController;
 use App\Http\Controllers\Api\Driver\OrderAcceptanceController;
 use App\Http\Controllers\Api\Driver\OrderExceptionController;
 use App\Http\Controllers\Api\Driver\OrderRejectionController;
 use App\Http\Controllers\Api\Driver\PickupController;
-use App\Http\Controllers\Api\Driver\TelemetryController;
 use App\Http\Controllers\Api\Driver\WalletController;
 use App\Http\Controllers\Api\Financial\BankOnboardingController;
 use App\Http\Controllers\Api\Financial\FlutterwaveTransferWebhookController;
@@ -22,11 +21,10 @@ use App\Http\Controllers\Api\Financial\WalletSummaryController;
 use App\Http\Controllers\Api\Financial\WithdrawalController;
 use App\Http\Controllers\Api\ForgotPasswordController;
 use App\Http\Controllers\Api\LoginController;
-use App\Http\Controllers\Api\Order\MerchantOrderController;
+
 use App\Http\Controllers\Api\Order\OrderDisputeController;
 use App\Http\Controllers\Api\Order\OrderReviewController;
 use App\Http\Controllers\Api\Payment\FlutterwaveVerifyPaymentController;
-use App\Http\Controllers\Api\Payment\FlutterwaveWebhookController;
 use App\Http\Controllers\Api\Payment\FlutterwaveWebhookRouterController;
 use App\Http\Controllers\Api\Payment\InitializePaymentController;
 use App\Http\Controllers\Api\Product\ProductController;
@@ -37,6 +35,7 @@ use App\Http\Controllers\Api\ResendOtpController;
 use App\Http\Controllers\Api\Store\MenuCategoryController;
 use App\Http\Controllers\Api\Store\StoreController;
 use App\Http\Controllers\Api\Store\StoreFinanceController;
+use App\Http\Controllers\Api\Store\StoreHandoverController;
 use App\Http\Controllers\Api\Store\StoreStaffController;
 use App\Http\Controllers\Api\Store\StoreStatusController;
 use App\Http\Controllers\Api\Store\SubOrderActionController;
@@ -95,13 +94,15 @@ Route::prefix('v1')->group(function () {
             Route::patch('/profile', [DriverController::class, 'updateProfile']);
             Route::patch('/status', [DriverController::class, 'toggleAvailability']);
 
-            Route::get('/driver/missions/{mission}/itinerary', App\Http\Controllers\Api\Driver\MissionItineraryController::class);
+            Route::get('/missions/{mission}/itinerary', MissionItineraryController::class);
 
             Route::post('location', [LocationController::class, 'update']);
 
+
+
             Route::post('sub-orders/{subOrder}/arrive', ArrivalController::class);
             Route::post('sub-orders/{subOrder}/pickup', PickupController::class);
-            Route::post('sub-orders/{subOrder}/deliver', DeliveryController::class);
+            Route::post('orders/{order}/deliver', DeliveryController::class);
 
 
             Route::get('wallet/summary', [WalletController::class, 'index']);
@@ -131,17 +132,16 @@ Route::prefix('v1')->group(function () {
                 // URL: /v1/store/categories
                 Route::post('/categories/{store}', [MenuCategoryController::class, 'store']);
 
-
+                Route::post('/store-handover/{store}/confirm', StoreHandoverController::class);
                 // Nested staff route (Maintains original URL: /v1/store/staff/invite)
                 Route::prefix('staff')->group(function () {
                     Route::post('/invite', [StoreStaffController::class, 'invite']);
                 });
 
-                Route::put('/sub-orders/{subOrder}/accept', [SubOrderActionController::class, 'accept']);
-                Route::put('/sub-orders/{subOrder}/cancel', [SubOrderActionController::class, 'cancel']);
+                Route::patch('/sub-orders/{subOrder}/accept', [SubOrderActionController::class, 'accept']);
+                Route::patch('/sub-orders/{subOrder}/cancel', [SubOrderActionController::class, 'cancel']);
 
-                Route::get('/sub-orders', [MerchantOrderController::class, 'index']);
-                Route::get('/sub-orders/{subOrder}', [MerchantOrderController::class, 'show']);
+
             });
 
             Route::prefix('product')->group(function () {
@@ -156,9 +156,6 @@ Route::prefix('v1')->group(function () {
 
             Route::prefix('/{store}')->group(function () {
 
-                // Merchant Order Handling Pipeline
-
-                Route::patch('orders/{subOrder}/status', [MerchantOrderController::class, 'update']);
 
                 Route::patch('toggle-status', StoreStatusController::class);
 

@@ -1,31 +1,45 @@
 <?php
-namespace App\Listeners;
 
-use App\Events\Customer\OrderInTransitEvent;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Mail;
-use App\Mail\CustomerDeliveryOtpMail;
+namespace App\Events;
 
-class GenerateAndSendDeliveryOtp implements ShouldQueue
+use App\Models\Order;
+use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Broadcasting\PrivateChannel;
+use Illuminate\Foundation\Events\Dispatchable;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+
+class OrderInTransit implements ShouldBroadcast
 {
+    use Dispatchable, InteractsWithSockets, SerializesModels;
+
+
     /**
-     * Handle the event.
+     * Create a new event instance.
      */
-    public function handle(OrderInTransit $event): void
+    public function __construct(public Order $order)
     {
-        $order = $event->order;
 
-        // 1. Generate a cryptographically secure 6-digit OTP
-        $otp = random_int(100000, 999999);
+    }
 
-        // 2. Store strictly in Redis with a 2-hour TTL
-        // Using a clear naming convention for the key prevents collisions
-        $cacheKey = "delivery_otp:order:{$order->id}";
-        Cache::store('redis')->put($cacheKey, $otp, now()->addHours(2));
+    /**
+     * Get the channels the event should broadcast on.
+     * Useful for triggering frontend WebSocket listeners for live tracking.
+     *
+     * @return array<int, \Illuminate\Broadcasting\Channel>
+     */
+    public function broadcastOn(): array
+    {
+        return [
+            new PrivateChannel('orders.' . $this->order->id),
+        ];
+    }
 
-        // 3. Dispatch the Email to the Customer
-        // (Assuming the Order model has a 'customer' relationship)
-        Mail::to($order->customer->email)->send(new CustomerDeliveryOtpMail($otp, $order));
+    /**
+     * The event's broadcast name.
+     */
+    public function broadcastAs(): string
+    {
+        return 'order.in_transit';
     }
 }
