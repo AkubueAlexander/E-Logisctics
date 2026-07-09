@@ -20,7 +20,7 @@ class OrderAutoCancelledBySystem implements ShouldBroadcast
     {
         // Broadcast directly to this specific customer's private channel
         return [
-            new PrivateChannel("App.Models.User.{$this->order->user_id}"),
+            new PrivateChannel("App.Models.User.{$this->order->customer_id}"),
         ];
     }
 

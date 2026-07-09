@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class DeliveryMission extends Model
 {
-    protected $fillable = ['order_id', 'driver_id', 'status', 'delivery_fee_minor_unit'];
+    protected $fillable = ['order_id', 'driver_id', 'status', 'delivery_fee_minor_unit', 'metadata'];
 
     public function order(): BelongsTo
     {

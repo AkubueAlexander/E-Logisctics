@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 
 class DriverProfile extends Model
@@ -53,6 +53,11 @@ class DriverProfile extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
+    public function missionPings(): HasMany
+    {
+        return $this->hasMany(MissionPing::class, 'driver_id');
+    }
+
     /**
      * Scope a query to only include verified, active, and available drivers within a specific distance.
      * Distance parameter is passed in kilometers (e.g., 5 for 5km).
@@ -63,7 +68,7 @@ class DriverProfile extends Model
             ->where('availability_status', 'available')
             ->whereNotNull('location')
             // Protect against dead apps: Ensure driver has pinged coordinates within the last 5 minutes
-            ->where('last_location_update', '>=', now()->subMinutes(5))
+//            ->where('last_location_update', '>=', now()->subMinutes(5))
             ->whereRaw(
                 "ST_DistanceSphere(location, ST_GeomFromText(?, 4326)) <= ?",
                 ["POINT({$longitude} {$latitude})", $radiusKm * 1000]

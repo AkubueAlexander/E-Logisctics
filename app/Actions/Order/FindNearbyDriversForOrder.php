@@ -14,9 +14,9 @@ class FindNearbyDriversForOrder
     public function execute(Order $order, float $radiusKm = 5.0): Collection
     {
         // Eager load sub-orders and store coordinates
-        $order->load(['subOrders.store', 'deliveryMission']);
+        $order->load(['subOrders.store', 'latestDeliveryMission']);
 
-        $mission = $order->deliveryMission;
+        $mission = $order->latestDeliveryMission;
         $firstStore = $order->subOrders->first()?->store;
 
         if (!$firstStore || !$firstStore->latitude || !$firstStore->longitude) {
@@ -30,7 +30,7 @@ class FindNearbyDriversForOrder
 
         // If the mission exists, explicitly exclude drivers who already timed out or rejected it
         if ($mission) {
-            $query->whereDoesntHave('user.missionPings', function ($pingQuery) use ($mission) {
+            $query->whereDoesntHave('missionPings', function ($pingQuery) use ($mission) {
                 $pingQuery->where('delivery_mission_id', $mission->id)
                     ->whereIn('status', ['timed_out', 'cancelled', 'rejected']);
             });

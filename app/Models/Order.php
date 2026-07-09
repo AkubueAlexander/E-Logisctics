@@ -4,6 +4,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Order extends Model
 {
@@ -65,6 +66,16 @@ class Order extends Model
     public function stateTransitions(): HasMany
     {
         return $this->hasMany(OrderStateTransition::class);
+    }
+
+    public function deliveryMission(): HasMany
+    {
+        return $this->hasMany(DeliveryMission::class);
+    }
+
+    public function latestDeliveryMission(): HasOne
+    {
+        return $this->hasOne(DeliveryMission::class)->latestOfMany('id');
     }
 
 

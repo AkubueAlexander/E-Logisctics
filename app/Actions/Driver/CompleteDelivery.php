@@ -45,16 +45,21 @@ class CompleteDelivery
                 throw new UnprocessableEntityHttpException('Invalid or expired handover verification code.');
             }
 
-            // Guard 4: Spatial Geofence Verification
-            if (!$order->snapshot_delivery_latitude || !$order->snapshot_delivery_longitude) {
+            // Guard 4: Spatial Geofence Verification using PostGIS 'location' column
+            if (!$order->location) {
                 throw new UnprocessableEntityHttpException('Customer delivery coordinates are missing.');
             }
 
+            // Calculate distance directly in the database to utilize PostGIS functions on the geometry column
             $distanceMeters = (float) DB::scalar(
-                "SELECT ST_DistanceSphere(ST_GeomFromText(?), ST_GeomFromText(?))",
+                "SELECT ST_DistanceSphere(
+                    ST_SetSRID(ST_MakePoint(?, ?), 4326),
+                    location
+                ) FROM orders WHERE id = ?",
                 [
-                    "POINT({$lng} {$lat})",
-                    "POINT({$order->snapshot_delivery_longitude} {$order->snapshot_delivery_latitude})"
+                    $lng,
+                    $lat,
+                    $order->id
                 ]
             );
 
@@ -65,7 +70,6 @@ class CompleteDelivery
             }
 
             // 1. Process all in-transit sub-orders at once safely
-
             $subOrders = $order->subOrders()
                 ->where('status', 'in_transit')
                 ->lockForUpdate()
@@ -98,7 +102,6 @@ class CompleteDelivery
         });
 
         // 6. Dispatch events safely OUTSIDE the transaction.
-
         foreach ($deliveredSubOrders as $subOrder) {
             event(new SubOrderDeliveredEvent($subOrder, true));
         }

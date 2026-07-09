@@ -13,7 +13,7 @@ class MissionPing extends Model
         'expires_at' => 'datetime',
     ];
 
-    public function mission(): BelongsTo
+    public function deliveryMission(): BelongsTo
     {
         return $this->belongsTo(DeliveryMission::class, 'delivery_mission_id');
     }

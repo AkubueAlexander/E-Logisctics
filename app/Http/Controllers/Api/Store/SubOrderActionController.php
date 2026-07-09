@@ -7,6 +7,7 @@ use App\Models\SubOrder;
 use App\Services\StoreOrderManagementService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Gate;
 
 class SubOrderActionController extends Controller
 {
@@ -17,11 +18,11 @@ class SubOrderActionController extends Controller
     public function accept(Request $request, SubOrder $subOrder): JsonResponse
     {
         // Ensure the authenticated user has access to this store's sub-order
-         $this->authorize('update', $subOrder->store);
+        Gate::authorize('update', $subOrder->store);
 
         try {
             $updatedSubOrder = $this->orderService->acceptSubOrder(
-                $subOrder, 
+                $subOrder,
                 $request->user()->id
             );
 
@@ -40,15 +41,15 @@ class SubOrderActionController extends Controller
 
     public function cancel(Request $request, SubOrder $subOrder): JsonResponse
     {
-        $this->authorize('update', $subOrder->store);
-        
+        Gate::authorize('update', $subOrder->store);
+
         $request->validate([
             'reason' => 'required|string|max:255'
         ]);
 
         try {
             $updatedSubOrder = $this->orderService->cancelSubOrder(
-                $subOrder, 
+                $subOrder,
                 $request->user()->id,
                 $request->input('reason')
             );
