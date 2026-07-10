@@ -47,7 +47,7 @@ class MissionItineraryController extends Controller
                 'address'                   => $store->address,
                 'latitude'                  => $store->latitude,
                 'longitude'                 => $store->longitude,
-                'status'                    => $subOrder->status, 
+                'status'                    => $subOrder->status,
                 'pickup_verification_code'  => $pickupCode, // Sent to driver to present to store manager
             ];
         }
@@ -58,17 +58,17 @@ class MissionItineraryController extends Controller
             'type'           => 'dropoff',
             'sub_order_id'   => null,
             'name'           => 'Customer Delivery Location',
-            'address'        => $order->snapshot_delivery_address,   
-            'latitude'       => $order->snapshot_delivery_latitude,  
-            'longitude'      => $order->snapshot_delivery_longitude, 
-            'status'         => $order->status, 
-            'customer_phone' => $order->customer->phone_number,
+            'address'        => $order->snapshot_delivery_address,
+            'latitude'       => $order->snapshot_delivery_latitude,
+            'longitude'      => $order->snapshot_delivery_longitude,
+            'status'         => $order->status,
+            'customer_phone' => $order?->customer?->phone_number ?? 'No phone provided'
         ];
 
         return response()->json([
             'mission_id'   => $mission->id,
             'order_id'     => $order->id,
-            'current_step' => $mission->status, 
+            'current_step' => $mission->status,
             'itinerary'    => $stops
         ], 200);
     }
