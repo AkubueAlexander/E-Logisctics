@@ -1,58 +1,68 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# E-Logisctics — Multi-Role Quick-Commerce & Delivery Platform
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A production-style backend for a quick-commerce marketplace (think Jiji/Glovo-style logistics), built with **Laravel 13**. The system supports four distinct user roles — **Customer**, **Driver**, **Store Manager**, and **Admin** — each with their own scoped API, and handles the full order lifecycle from store discovery to payment to delivery.
 
-## About Laravel
+This project was built to deepen my Laravel skills beyond tutorials — architecting real-world domain logic like role-based access, payment webhooks, wallet systems, and delivery state machines.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+##  What It Does
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- **Customers** discover nearby stores, browse menus, manage a cart, check out, pay via Flutterwave, track orders, and rate/dispute completed orders.
+- **Drivers** accept or reject delivery pings, track mission itineraries, update live location, confirm pickup/arrival/delivery, and manage their wallet and withdrawals.
+- **Store Managers** manage store profiles, product catalogs (with modifiers), staff invitations, sub-order acceptance/cancellation, and view store finance summaries.
+- **Admins** manage global product category taxonomy across the platform.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## 🛠️ Tech Stack
 
-## Learning Laravel
+- **Framework:** Laravel 13, PHP 8.3
+- **Auth:** Laravel Sanctum (API tokens), Laravel Jetstream, two-factor authentication via Google2FA
+- **Frontend/Interactivity:** Livewire 3
+- **Cache/Queue:** Redis (Predis)
+- **Payments:** Flutterwave — including payment initialization, redirect verification, and webhook handling
+- **Testing:** Pest PHP
+- **Other:** OTP-based registration/password recovery, QR code generation (bacon/bacon-qr-code)
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## 🧩 Key Architecture Decisions
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+- **Role-based route grouping** — API routes are cleanly segmented by role middleware (`role:driver`, `role:store_manager`, `role:admin`, `role:customer`), keeping authorization logic out of controllers.
+- **Payment webhook handling** — a single, idempotent Flutterwave webhook entry point handles asynchronous payment confirmation, decoupled from the browser-redirect verification flow.
+- **Wallet & withdrawal system** — drivers and stores each have wallet summaries and withdrawal flows tied to bank onboarding.
+- **Order state machine** — orders move through acceptance, pickup, arrival, delivery, and exception states (e.g. no-show handling), modeled as discrete controller actions rather than a single bloated controller.
+- **Geospatial discovery** — customers query nearby stores by location, with cached storefront menu responses for performance.
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+## 📡 Sample API Routes
 
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
-
-```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+```
+POST   /api/v1/auth/register
+POST   /api/v1/auth/verify-otp
+POST   /api/v1/auth/login
+GET    /api/v1/customer/stores/nearby
+GET    /api/v1/customer/stores/{store}/menu
+POST   /api/v1/customer/checkout
+POST   /api/v1/payments/flutterwave/webhook
+POST   /api/v1/driver/pings/{ping}/accept
+POST   /api/v1/driver/sub-orders/{subOrder}/pickup
+PATCH  /api/v1/store/sub-orders/{subOrder}/accept
+GET    /api/v1/store/{store}/finance/summary
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+## ⚙️ Getting Started
 
-## Contributing
+```bash
+git clone https://github.com/AkubueAlexander/E-Logisctics.git
+cd E-Logisctics
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate
+npm install && npm run build
+php artisan serve
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## 📌 Project Status
 
-## Code of Conduct
+This is an actively developed personal project used to demonstrate backend architecture, API design, and payment integration skills. Not currently deployed to a public demo — happy to walk through the code or run it locally on request.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## 👤 About Me
 
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Built by Akubue Alexander — Laravel developer based in Lagos, Nigeria.
+[GitHub](https://github.com/AkubueAlexander) · Open to backend/full-stack Laravel roles.
