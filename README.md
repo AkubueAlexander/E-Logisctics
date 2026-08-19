@@ -1,6 +1,6 @@
 # E-Logisctics — Multi-Role Quick-Commerce & Delivery Platform
 
-A production-style backend for a quick-commerce marketplace (think Jiji/Glovo-style logistics), built with **Laravel 13**. The system supports four distinct user roles — **Customer**, **Driver**, **Store Manager**, and **Admin** — each with their own scoped API, and handles the full order lifecycle from store discovery to payment to delivery.
+A production-style backend for a quick-commerce marketplace built with **Laravel 13**. The system supports four distinct user roles — **Customer**, **Driver**, **Store Manager**, and **Admin** — each with their own scoped API, and handles the full order lifecycle from store discovery to payment to delivery.
 
 This project was built to deepen my Laravel skills beyond tutorials — architecting real-world domain logic like role-based access, payment webhooks, wallet systems, and delivery state machines.
 
