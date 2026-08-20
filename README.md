@@ -2,7 +2,7 @@
 
 A production-style backend for a quick-commerce marketplace built with **Laravel 13**. The system supports four distinct user roles — **Customer**, **Driver**, **Store Manager**, and **Admin** — each with their own scoped API, and handles the full order lifecycle from store discovery to payment to delivery.
 
-This project was built to deepen my Laravel skills beyond tutorials — architecting real-world domain logic like role-based access, payment webhooks, wallet systems, and delivery state machines.
+Architected real-world domain logic like role-based access, payment webhooks, wallet systems, and delivery state machines.
 
 ##  What It Does
 
@@ -15,7 +15,6 @@ This project was built to deepen my Laravel skills beyond tutorials — architec
 
 - **Framework:** Laravel 13, PHP 8.3
 - **Auth:** Laravel Sanctum (API tokens), Laravel Jetstream, two-factor authentication via Google2FA
-- **Frontend/Interactivity:** Livewire 3
 - **Cache/Queue:** Redis (Predis)
 - **Payments:** Flutterwave — including payment initialization, redirect verification, and webhook handling
 - **Testing:** Pest PHP
